@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.log
+.env
+.env.local
+server/data/
+.DS_Store
+.vscode/
+.idea/
+
+# Per-machine Claude Code settings — don't share across machines.
+.claude/settings.local.json
