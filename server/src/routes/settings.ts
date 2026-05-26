@@ -70,6 +70,11 @@ export const DEFAULT_TOOL_DEFAULTS = {
   bow: {
     sizeIn: 24,
   },
+  garland: {
+    sizeIn: 12,
+    withLights: true,
+    drawingStyle: "strand" as const,
+  },
 };
 
 type ToolDefaults = Record<string, Record<string, unknown>>;

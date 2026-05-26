@@ -7,6 +7,8 @@ const ASSETS: Record<string, string> = {
   "wreathbow-with-lights": "/items/wreathbow-with-lights.png",
   "wreathbow-without-lights": "/items/wreathbow-without-lights.png",
   "bow": "/items/bow.png",
+  "garland-with-lights": "/items/garland-with-lights.png",
+  "garland-without-lights": "/items/garland-without-lights.png",
 };
 
 const cache: Record<string, HTMLImageElement | null | "loading"> = {};

@@ -59,7 +59,23 @@ export type BowItem = ItemBase & {
   rotation?: number;
 };
 
-export type SceneItem = StrandItem | WreathItem | BowItem;
+// A garland is a strand-like polyline that gets the chosen garland PNG stamped
+// along its length, rotated to the local tangent. No spacing setting (it's
+// continuous greenery rope, not discrete bulbs); no color picker (the lights
+// are baked into the with-lights asset variant).
+//
+// `sizeIn` is the rendered thickness of the greenery rope, in inches of
+// real-world space. Older garlands without this field fall back to ~9.6"
+// (the previous global default) so they don't suddenly change appearance.
+export type GarlandItem = ItemBase & {
+  kind: "garland";
+  points: number[];
+  drawingStyle: DrawingStyle;
+  withLights: boolean;
+  sizeIn?: number; // 6 / 9 / 12 / 18 / 24
+};
+
+export type SceneItem = StrandItem | WreathItem | BowItem | GarlandItem;
 
 // Convenience alias kept so older imports keep working.
 export type Strand = StrandItem;
@@ -206,4 +222,7 @@ export function isWreath(item: SceneItem): item is WreathItem {
 }
 export function isBow(item: SceneItem): item is BowItem {
   return item.kind === "bow";
+}
+export function isGarland(item: SceneItem): item is GarlandItem {
+  return item.kind === "garland";
 }

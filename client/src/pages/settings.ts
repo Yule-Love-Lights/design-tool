@@ -29,6 +29,11 @@ const FACTORY_DEFAULTS: ToolDefaults = {
   bow: {
     sizeIn: 24,
   },
+  garland: {
+    sizeIn: 12,
+    withLights: true,
+    drawingStyle: "strand",
+  },
 };
 
 // Spec for what a section knows how to render for a given item-type key.
@@ -95,6 +100,15 @@ const SECTIONS: SectionSpec[] = [
     label: "Bows",
     fields: [
       { key: "sizeIn", label: "Default size", kind: "spacing", options: [12, 18, 24, 36, 48], unit: "\"" },
+    ],
+  },
+  {
+    key: "garland",
+    label: "Garland",
+    fields: [
+      { key: "sizeIn", label: "Default size", kind: "spacing", options: [6, 9, 12, 18, 24], unit: "\"" },
+      { key: "withLights", label: "With lights by default", kind: "bool" },
+      { key: "drawingStyle", label: "Default drawing style", kind: "style", options: ["strand", "trace", "single"] },
     ],
   },
 ];

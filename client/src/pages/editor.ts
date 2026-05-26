@@ -1,9 +1,10 @@
 import Konva from "konva";
-import { api, isStrand, isWreath, isBow, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type Yardstick, type BulbType, type DrawingStyle } from "../api";
+import { api, isStrand, isWreath, isBow, isGarland, type Design, type Scene, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type Yardstick, type BulbType, type DrawingStyle } from "../api";
 import { COLORS, setPalette } from "../editor/colors";
 import { renderStrand, strandLengthPx } from "../editor/strand";
 import { createWreath } from "../editor/wreath";
 import { createBow } from "../editor/bow";
+import { renderGarland, garlandLengthPx } from "../editor/garland";
 import { preloadAssets } from "../editor/assets";
 import { renderYardstick, pxPerFoot, yardstickLabel } from "../editor/yardstick";
 
@@ -32,7 +33,7 @@ const STYLE_HELP: Record<DrawingStyle, string> = {
 };
 
 type ItemCategory = "lights" | "decor";
-type DecorType = "wreath" | "bow";
+type DecorType = "wreath" | "bow" | "garland";
 
 type ToolState = {
   category: ItemCategory;
@@ -48,18 +49,23 @@ type ToolState = {
   distanceToSurfaceFt: number;
   opacity: number;
   showCoverage: boolean;
-  // Decor — wreath
+  // Decor sub-type
   decorType: DecorType;
+  // Decor — wreath
   wreathSizeIn: number;
   wreathWithLights: boolean;
   wreathWithBow: boolean;
   wreathColorId: string;
   // Decor — bow
   bowSizeIn: number;
+  // Decor — garland (drawn strand-like, sized like wreath/bow)
+  garlandSizeIn: number;
+  garlandWithLights: boolean;
 };
 
 const WREATH_SIZES = [24, 36, 48, 60];
 const BOW_SIZES = [12, 18, 24, 36, 48];
+const GARLAND_SIZES = [6, 9, 12, 18, 24];
 
 export async function renderEditor(root: HTMLElement, designId: string) {
   let design: Design;
@@ -133,6 +139,8 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     wreathWithBow: true,
     wreathColorId: "warm-white",
     bowSizeIn: 24,
+    garlandSizeIn: 12,
+    garlandWithLights: true,
   };
   let activeYardstickId: string | null = scene.yardsticks[0]?.id ?? null;
   let creatingYardstick = false;
@@ -476,6 +484,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       } else if (isBow(item)) {
         g = createBow(item, ppfForActiveYardstick(), requestCanvasRedraw);
         g.on("transformend dragend", () => bakeTransformIntoBow(g, item.id));
+      } else if (isGarland(item)) {
+        g = renderGarland(item, ppfForGarland(item), requestCanvasRedraw);
+        g.draggable(true);
+        g.on("transformend dragend", () => bakeTransformIntoGarland(g, item.id));
       } else {
         continue;
       }
@@ -496,13 +508,23 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     transformer.nodes(selectedItemNodes);
     // Image-backed items (wreath, bow) preserve aspect ratio while resizing so
     // they don't get squished. Strands (line geometry) get free non-uniform scale.
+    // Garland-only selection gets rotate-only — no resize anchors at all
+    // (resizing would distort the tiled PNG stamps).
     const allImageItems =
       selectedItemNodes.length > 0 &&
       selectedItemNodes.every((n) => {
         const name = (n as Konva.Group).name();
         return name === "wreath" || name === "bow";
       });
+    const allGarland =
+      selectedItemNodes.length > 0 &&
+      selectedItemNodes.every((n) => (n as Konva.Group).name() === "garland");
     transformer.keepRatio(allImageItems);
+    transformer.enabledAnchors(
+      allGarland
+        ? []
+        : ["top-left", "top-right", "bottom-left", "bottom-right", "middle-left", "middle-right", "top-center", "bottom-center"],
+    );
     yardstickTransformer.nodes(selectedYardstickNode ? [selectedYardstickNode] : []);
     drawLayer.batchDraw();
     uiLayer.batchDraw();
@@ -520,6 +542,52 @@ export async function renderEditor(root: HTMLElement, designId: string) {
 
   function allBows(): BowItem[] {
     return scene.items.filter(isBow);
+  }
+
+  function allGarlands(): GarlandItem[] {
+    return scene.items.filter(isGarland);
+  }
+
+  // Garlands size themselves using their own yardstick (or the first one as
+  // fallback if their own was deleted), same fall-back behavior as strands.
+  function yardstickForGarland(g: GarlandItem): Yardstick | null {
+    const tied = g.yardstickId
+      ? scene.yardsticks.find((y) => y.id === g.yardstickId)
+      : undefined;
+    return tied ?? scene.yardsticks[0] ?? null;
+  }
+  function ppfForGarland(g: GarlandItem): number {
+    return pxPerFoot(yardstickForGarland(g));
+  }
+
+  // After a Transformer move/rotate (no resize — anchors disabled for garland),
+  // bake the group's transform back into the garland's point coordinates so
+  // the next render uses an identity transform on the group again.
+  function bakeTransformIntoGarland(group: Konva.Group, garlandId: string) {
+    const cur = scene.items.find((i) => i.id === garlandId);
+    if (!cur || !isGarland(cur)) return;
+    const tx = group.x();
+    const ty = group.y();
+    const sx = group.scaleX();
+    const sy = group.scaleY();
+    const rot = (group.rotation() * Math.PI) / 180;
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    const newPts: number[] = [];
+    for (let i = 0; i < cur.points.length; i += 2) {
+      const x = cur.points[i] * sx;
+      const y = cur.points[i + 1] * sy;
+      newPts.push(tx + x * cos - y * sin, ty + x * sin + y * cos);
+    }
+    scene = {
+      ...scene,
+      items: scene.items.map((i) =>
+        i.id === garlandId && isGarland(i) ? { ...i, points: newPts } : i,
+      ),
+    };
+    scheduleSave();
+    commit();
+    redrawScene();
   }
 
   // Bake the Transformer's scale into the wreath's stored sizeIn so the next
@@ -643,6 +711,18 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       matchIds = allBows()
         .filter((b) => b.x >= x1 && b.x <= x2 && b.y >= y1 && b.y <= y2)
         .map((b) => b.id);
+    } else if (tool.category === "decor" && tool.decorType === "garland") {
+      // Decor → Garland: pick garlands that have any polyline point in the box.
+      matchIds = allGarlands()
+        .filter((g) => {
+          for (let i = 0; i < g.points.length; i += 2) {
+            const px = g.points[i];
+            const py = g.points[i + 1];
+            if (px >= x1 && px <= x2 && py >= y1 && py <= y2) return true;
+          }
+          return false;
+        })
+        .map((g) => g.id);
     } else {
       // Default: strand items whose bulbType matches AND have any point in the box.
       matchIds = allStrands()
@@ -797,6 +877,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         <div class="bulb-types" id="decor-types">
           <button data-decor="wreath" class="${tool.decorType === "wreath" ? "active" : ""}">Wreath</button>
           <button data-decor="bow" class="${tool.decorType === "bow" ? "active" : ""}">Bow</button>
+          <button data-decor="garland" class="${tool.decorType === "garland" ? "active" : ""}">Garland</button>
         </div>
         ${(() => {
           if (tool.decorType === "wreath") {
@@ -805,9 +886,15 @@ export async function renderEditor(root: HTMLElement, designId: string) {
               Select All Wreaths${count > 0 ? ` (${count})` : ""}
             </button>`;
           }
-          const count = allBows().length;
-          return `<button id="select-all-bows" style="margin-top:8px;width:100%" ${count === 0 ? "disabled" : ""}>
-            Select All Bows${count > 0 ? ` (${count})` : ""}
+          if (tool.decorType === "bow") {
+            const count = allBows().length;
+            return `<button id="select-all-bows" style="margin-top:8px;width:100%" ${count === 0 ? "disabled" : ""}>
+              Select All Bows${count > 0 ? ` (${count})` : ""}
+            </button>`;
+          }
+          const count = allGarlands().length;
+          return `<button id="select-all-garlands" style="margin-top:8px;width:100%" ${count === 0 ? "disabled" : ""}>
+            Select All Garlands${count > 0 ? ` (${count})` : ""}
           </button>`;
         })()}
       </section>
@@ -835,7 +922,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       <section>
         <div class="style-help">Click anywhere on the photo to place a wreath.</div>
       </section>
-      ` : `
+      ` : tool.decorType === "bow" ? `
       <section>
         <h3>Size (in)</h3>
         <div class="spacing-row" id="bow-sizes">
@@ -844,6 +931,28 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       </section>
       <section>
         <div class="style-help">Click anywhere on the photo to place a bow.</div>
+      </section>
+      ` : `
+      <section>
+        <h3>Size (in)</h3>
+        <div class="spacing-row" id="garland-sizes">
+          ${GARLAND_SIZES.map((s) => `<button data-s="${s}" class="${tool.garlandSizeIn === s ? "active" : ""}">${s}"</button>`).join("")}
+        </div>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Thickness of the greenery rope on the photo.</div>
+      </section>
+      <section>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="garland-with-lights" ${tool.garlandWithLights ? "checked" : ""} />
+          <span>With lights</span>
+        </label>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Pre-lit greenery vs. plain greenery.</div>
+      </section>
+      <section>
+        <h3>Drawing Style</h3>
+        <div class="style-row" id="garland-styles">
+          ${STYLES.map((s) => `<button data-style="${s.id}" class="${tool.drawingStyle === s.id ? "active" : ""}">${s.label}</button>`).join("")}
+        </div>
+        <div class="style-help">${STYLE_HELP[tool.drawingStyle]}</div>
       </section>
       `}
       `}
@@ -871,10 +980,37 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     sb.querySelectorAll("#decor-types button").forEach((b) =>
       b.addEventListener("click", () => {
         tool.decorType = (b as HTMLElement).dataset.decor as DecorType;
+        // Switching decor sub-type mid-trace would orphan the polyline; bail out.
+        cancelInProgress();
         applyDefaultsForCurrentType();
         renderSidebar();
       }),
     );
+    sb.querySelectorAll("#garland-sizes button").forEach((b) =>
+      b.addEventListener("click", () => {
+        tool.garlandSizeIn = Number((b as HTMLElement).dataset.s);
+        renderSidebar();
+      }),
+    );
+    const garlandWl = sb.querySelector("#garland-with-lights") as HTMLInputElement | null;
+    garlandWl?.addEventListener("change", () => {
+      tool.garlandWithLights = garlandWl.checked;
+      renderSidebar();
+    });
+    sb.querySelectorAll("#garland-styles button").forEach((b) =>
+      b.addEventListener("click", () => {
+        cancelInProgress();
+        tool.drawingStyle = (b as HTMLElement).dataset.style as DrawingStyle;
+        renderSidebar();
+      }),
+    );
+    sb.querySelector("#select-all-garlands")?.addEventListener("click", () => {
+      const ids = allGarlands().map((g) => g.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
     sb.querySelectorAll("#wreath-sizes button").forEach((b) =>
       b.addEventListener("click", () => {
         tool.wreathSizeIn = Number((b as HTMLElement).dataset.s);
@@ -1000,18 +1136,41 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         redrawScene();
       });
     });
+    // Clicking anywhere on a strand row (not the × button) selects that strand
+    // on the canvas, same as clicking the strand directly. The × button's
+    // stopPropagation above prevents double-handling.
+    sb.querySelectorAll<HTMLElement>("#strands .strand-row").forEach((row) => {
+      row.style.cursor = "pointer";
+      row.addEventListener("click", () => {
+        const id = row.dataset.id;
+        if (!id) return;
+        selectedYardstickId = null;
+        selectedIds = new Set([id]);
+        redrawScene();
+      });
+    });
 
     renderTotal();
   }
 
   function renderTotal() {
     const strs = allStrands();
-    const totalFt = strs.reduce((acc, s) => acc + strandLengthPx(s) / ppfForStrand(s), 0);
+    const gars = allGarlands();
+    const totalStrandFt = strs.reduce((acc, s) => acc + strandLengthPx(s) / ppfForStrand(s), 0);
+    const totalGarlandFt = gars.reduce((acc, g) => acc + garlandLengthPx(g) / ppfForGarland(g), 0);
     const ysCount = scene.yardsticks.length;
-    (root.querySelector("#total") as HTMLElement).innerHTML =
-      ysCount > 0
-        ? `<strong>${totalFt.toFixed(1)} ft</strong> total across ${strs.length} strand${strs.length === 1 ? "" : "s"} · ${ysCount} yardstick${ysCount === 1 ? "" : "s"}`
-        : `<span style="color:var(--warn)">Drop a Yardstick to get real-world measurements.</span>`;
+    if (ysCount === 0) {
+      (root.querySelector("#total") as HTMLElement).innerHTML =
+        `<span style="color:var(--warn)">Drop a Yardstick to get real-world measurements.</span>`;
+      return;
+    }
+    const parts: string[] = [];
+    parts.push(`<strong>${totalStrandFt.toFixed(1)} ft</strong> across ${strs.length} strand${strs.length === 1 ? "" : "s"}`);
+    if (gars.length > 0) {
+      parts.push(`<strong>${totalGarlandFt.toFixed(1)} ft</strong> across ${gars.length} garland${gars.length === 1 ? "" : "s"}`);
+    }
+    parts.push(`${ysCount} yardstick${ysCount === 1 ? "" : "s"}`);
+    (root.querySelector("#total") as HTMLElement).innerHTML = parts.join(" · ");
   }
 
   // ============================================================
@@ -1027,6 +1186,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     const wreathSel = selectedItems.filter(isWreath);
     const bowSel = selectedItems.filter(isBow);
     const strandSel = selectedItems.filter(isStrand);
+    const garlandSel = selectedItems.filter(isGarland);
 
     // All-of-one-kind → dedicated edit panel.
     if (wreathSel.length === selectedItems.length) {
@@ -1037,12 +1197,17 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       renderSelectedBowSidebar(sb, bowSel);
       return;
     }
+    if (garlandSel.length === selectedItems.length) {
+      renderSelectedGarlandSidebar(sb, garlandSel);
+      return;
+    }
     if (strandSel.length === selectedItems.length) {
       // Falls through to the strand panel below.
     } else {
       // Mixed selection — just offer delete.
       const counts: string[] = [];
       if (strandSel.length) counts.push(`${strandSel.length} strand${strandSel.length === 1 ? "" : "s"}`);
+      if (garlandSel.length) counts.push(`${garlandSel.length} garland${garlandSel.length === 1 ? "" : "s"}`);
       if (wreathSel.length) counts.push(`${wreathSel.length} wreath${wreathSel.length === 1 ? "" : "s"}`);
       if (bowSel.length) counts.push(`${bowSel.length} bow${bowSel.length === 1 ? "" : "s"}`);
       sb.innerHTML = `
@@ -1363,6 +1528,98 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       redrawScene();
     });
     sb.querySelector("#sel-bow-delete")?.addEventListener("click", deleteSelected);
+  }
+
+  // ============================================================
+  // Sidebar — edit panel for the currently selected garland(s)
+  // ============================================================
+  function renderSelectedGarlandSidebar(sb: HTMLElement, sel: GarlandItem[]) {
+    const sharedSize = uniq(sel.map((g) => g.sizeIn ?? 12));
+    const sharedWithLights = uniq(sel.map((g) => g.withLights));
+    const sharedYsId = uniq(sel.map((g) => g.yardstickId ?? ""));
+    const totalFt = sel.reduce((acc, g) => acc + garlandLengthPx(g) / ppfForGarland(g), 0);
+
+    sb.innerHTML = `
+      <section>
+        <h3>${sel.length === 1 ? "Edit Garland" : `Edit ${sel.length} Garlands`}</h3>
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:4px">
+          ${totalFt.toFixed(1)} ft total · drag body to move · drag rotation handle to rotate
+        </div>
+      </section>
+      <section>
+        <h3>Size (in)${sharedSize.length > 1 ? " — mixed" : ""}</h3>
+        <div class="spacing-row" id="sel-garland-sizes">
+          ${GARLAND_SIZES.map((s) => `<button data-s="${s}" class="${sharedSize.length === 1 && sharedSize[0] === s ? "active" : ""}">${s}"</button>`).join("")}
+        </div>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Thickness of the greenery rope.</div>
+      </section>
+      <section>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="sel-garland-with-lights" ${sharedWithLights.length === 1 && sharedWithLights[0] ? "checked" : ""} />
+          <span>With lights${sharedWithLights.length > 1 ? " (mixed)" : ""}</span>
+        </label>
+      </section>
+      ${scene.yardsticks.length > 0 ? `
+      <section>
+        <h3>Sized using${sharedYsId.length > 1 ? " (mixed)" : ""}</h3>
+        <select id="sel-garland-yardstick" class="yardstick-select">
+          ${sharedYsId.length > 1 ? `<option value="" disabled selected>— mixed —</option>` : ""}
+          ${scene.yardsticks.map((y, i) => {
+            const isSel = sharedYsId.length === 1 && (sharedYsId[0] === y.id || (sharedYsId[0] === "" && y.id === yardstickForGarland(sel[0])?.id));
+            return `<option value="${y.id}" ${isSel ? "selected" : ""}>${yardstickLabel(i)} — ${y.realFeet} ft</option>`;
+          }).join("")}
+        </select>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Changes the px/ft used to scale the garland's stamp size.</div>
+      </section>
+      ` : ""}
+      <section style="display:flex;gap:6px">
+        <button id="sel-garland-duplicate">Duplicate</button>
+        <button id="sel-garland-delete" class="danger">Delete</button>
+      </section>
+    `;
+
+    const updateGarlands = (mut: (g: GarlandItem) => GarlandItem) => {
+      scene = {
+        ...scene,
+        items: scene.items.map((i) => (isGarland(i) && selectedIds.has(i.id) ? mut(i) : i)),
+      };
+      scheduleSave();
+      commit();
+      redrawScene();
+    };
+
+    sb.querySelectorAll("#sel-garland-sizes button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const v = Number((b as HTMLElement).dataset.s);
+        updateGarlands((g) => ({ ...g, sizeIn: v }));
+      }),
+    );
+
+    const wl = sb.querySelector("#sel-garland-with-lights") as HTMLInputElement | null;
+    wl?.addEventListener("change", () => {
+      updateGarlands((g) => ({ ...g, withLights: wl.checked }));
+    });
+
+    const ysSel = sb.querySelector("#sel-garland-yardstick") as HTMLSelectElement | null;
+    ysSel?.addEventListener("change", () => {
+      const newYsId = ysSel.value;
+      if (!newYsId) return;
+      updateGarlands((g) => ({ ...g, yardstickId: newYsId }));
+    });
+
+    sb.querySelector("#sel-garland-duplicate")?.addEventListener("click", () => {
+      const newGarlands = sel.map((g) => ({
+        ...g,
+        id: cryptoId(),
+        points: g.points.map((p) => p + 20),
+      }));
+      scene = { ...scene, items: [...scene.items, ...newGarlands] };
+      selectedIds = new Set(newGarlands.map((g) => g.id));
+      scheduleSave();
+      commit();
+      redrawScene();
+    });
+    sb.querySelector("#sel-garland-delete")?.addEventListener("click", deleteSelected);
   }
 
   function uniq<T>(arr: T[]): T[] {
@@ -1835,6 +2092,72 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     commit();
   }
 
+  // ===== Garland commits =====
+  // Garland is a strand-like polyline. Same UX as strand drawing: Strand mode
+  // makes a single straight piece, Trace splits into per-segment pieces (so
+  // each click→click is independently editable), Single drops one stamp.
+  function commitGarland(points: number[]) {
+    if (points.length < 4) return;
+    const g: GarlandItem = {
+      id: cryptoId(),
+      kind: "garland",
+      drawingStyle: "strand",
+      withLights: tool.garlandWithLights,
+      sizeIn: tool.garlandSizeIn,
+      points: [...points],
+      yardstickId: activeYs()?.id ?? null,
+    };
+    scene = { ...scene, items: [...scene.items, g] };
+    scheduleSave();
+    commit();
+  }
+
+  function commitGarlandSingle(p: { x: number; y: number }) {
+    const g: GarlandItem = {
+      id: cryptoId(),
+      kind: "garland",
+      drawingStyle: "single",
+      withLights: tool.garlandWithLights,
+      sizeIn: tool.garlandSizeIn,
+      points: [p.x, p.y],
+      yardstickId: activeYs()?.id ?? null,
+    };
+    scene = { ...scene, items: [...scene.items, g] };
+    scheduleSave();
+    commit();
+  }
+
+  // Split a Trace polyline into one GarlandItem per click→click segment so
+  // each piece is independently selectable / movable / deletable — mirrors
+  // strand commitTraceSegments. One commit() snapshot covers the whole batch
+  // so a single Undo removes the entire trace.
+  function commitGarlandTraceSegments(polyline: number[]) {
+    const newGarlands: GarlandItem[] = [];
+    for (let i = 0; i + 4 <= polyline.length; i += 2) {
+      const seg = polyline.slice(i, i + 4);
+      if (Math.hypot(seg[2] - seg[0], seg[3] - seg[1]) < 4) continue;
+      newGarlands.push({
+        id: cryptoId(),
+        kind: "garland",
+        drawingStyle: "trace",
+        withLights: tool.garlandWithLights,
+        sizeIn: tool.garlandSizeIn,
+        points: seg,
+        yardstickId: activeYs()?.id ?? null,
+      });
+    }
+    if (newGarlands.length === 0) return;
+    scene = { ...scene, items: [...scene.items, ...newGarlands] };
+    scheduleSave();
+    commit();
+  }
+
+  // True when the current draw context is for garland. Garland lives under
+  // Decor in the sidebar but draws like a strand (Strand/Trace/Single styles).
+  function drawingGarland(): boolean {
+    return tool.category === "decor" && tool.decorType === "garland";
+  }
+
   function cancelInProgress() {
     dragPts = null;
     tracePts = null;
@@ -1859,9 +2182,15 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     // Drop the trailing cursor-tracking point (it's a duplicate of the last committed point
     // updated on mousemove). Keep all committed clicks.
     const committed = tracePts.slice(0, -2);
-    // Split the polyline so each click→click segment becomes its own strand,
-    // making them independently editable (move/resize/recolor/etc.).
-    commitTraceSegments(committed);
+    if (drawingGarland()) {
+      // Per-segment: each click→click becomes its own GarlandItem so they're
+      // independently editable. One Undo still removes the whole trace.
+      commitGarlandTraceSegments(committed);
+    } else {
+      // Split the polyline so each click→click segment becomes its own strand,
+      // making them independently editable (move/resize/recolor/etc.).
+      commitTraceSegments(committed);
+    }
     tracePts = null;
     drawPreview?.destroy();
     drawPreview = null;
@@ -1896,6 +2225,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     // Click on an existing bow — same deal.
     if (e.target.findAncestor(".bow", true)) return;
 
+    // Click on an existing garland — let its click handler select it; don't draw.
+    // (Exception while a trace is in progress, same as for strands.)
+    if (e.target.findAncestor(".garland", true) && !tracePts) return;
+
     // Click on either Transformer (anchor handles) — suppress draw.
     if (e.target.findAncestor("Transformer", true)) return;
 
@@ -1926,8 +2259,9 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     const p = imagePoint();
     if (!p || !inPhoto(p)) return;
 
-    // Decor: single click places the active decor item at that point.
-    if (tool.category === "decor") {
+    // Decor: wreath/bow place on a single click. Garland falls through to the
+    // strand-like drawing pipeline below (Strand / Trace / Single).
+    if (tool.category === "decor" && tool.decorType !== "garland") {
       if (tool.decorType === "wreath") commitWreath(p);
       else if (tool.decorType === "bow") commitBow(p);
       redrawScene();
@@ -1935,7 +2269,8 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     }
 
     if (tool.drawingStyle === "single") {
-      commitSingle(p);
+      if (drawingGarland()) commitGarlandSingle(p);
+      else commitSingle(p);
       redrawScene();
       return;
     }
@@ -2066,7 +2401,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       // Reject too-short drags as accidental clicks.
       const dx = dragPts[2] - dragPts[0];
       const dy = dragPts[3] - dragPts[1];
-      if (Math.hypot(dx, dy) >= 6) commitStrand(dragPts);
+      if (Math.hypot(dx, dy) >= 6) {
+        if (drawingGarland()) commitGarland(dragPts);
+        else commitStrand(dragPts);
+      }
       dragPts = null;
       drawPreview?.destroy();
       drawPreview = null;
@@ -2146,6 +2484,17 @@ export async function renderEditor(root: HTMLElement, designId: string) {
   // Called at init and again every time the user picks a different category
   // or sub-type in the draw sidebar — so each type's "feel" follows Settings.
   function applyDefaultsForCurrentType() {
+    if (tool.category === "decor" && tool.decorType === "garland") {
+      const entry = savedDefaults?.["garland"];
+      if (!entry || typeof entry !== "object") return;
+      if (typeof entry.sizeIn === "number") tool.garlandSizeIn = entry.sizeIn;
+      if (typeof entry.withLights === "boolean") tool.garlandWithLights = entry.withLights;
+      if (typeof entry.drawingStyle === "string") {
+        const ds = entry.drawingStyle;
+        if (ds === "strand" || ds === "trace" || ds === "single") tool.drawingStyle = ds;
+      }
+      return;
+    }
     if (tool.category === "lights") {
       const entry = savedDefaults?.[tool.bulbType];
       if (!entry || typeof entry !== "object") return;
