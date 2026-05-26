@@ -1325,6 +1325,19 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         </div>
       </section>
 
+      ${(() => {
+        // Quick way to grab every strand of the same bulb type without
+        // bouncing back to the draw panel. Only shows when the selection is
+        // all-one-type (mixed types would make the label ambiguous).
+        if (sharedBulbType.length !== 1) return "";
+        const bt = sharedBulbType[0] as BulbType;
+        const count = allStrands().filter((s) => s.bulbType === bt).length;
+        const typeLabel = BULB_TYPES.find((b) => b.id === bt)?.label ?? bt;
+        return `<section><button id="sel-select-all-strands" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All ${typeLabel} Lights (${count})
+        </button></section>`;
+      })()}
+
       <section>
         <h3>Bulb Type</h3>
         <div class="bulb-types" id="sel-bulb-types">
@@ -1417,6 +1430,15 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       requestCanvasRedraw();
     };
 
+    sb.querySelector("#sel-select-all-strands")?.addEventListener("click", () => {
+      if (sharedBulbType.length !== 1) return;
+      const bt = sharedBulbType[0] as BulbType;
+      const ids = allStrands().filter((s) => s.bulbType === bt).map((s) => s.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
     sb.querySelectorAll("#sel-bulb-types button").forEach((b) =>
       b.addEventListener("click", () => {
         const t = (b as HTMLElement).dataset.type as BulbType;
@@ -1503,6 +1525,12 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           Drag the body to move · drag corners to resize · drag rotation handle to rotate.
         </div>
       </section>
+      ${(() => {
+        const count = allWreaths().length;
+        return `<section><button id="sel-select-all-wreaths" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All Wreaths (${count})
+        </button></section>`;
+      })()}
       <section>
         <h3>Size (in)</h3>
         <div class="spacing-row" id="sel-wreath-sizes">
@@ -1537,6 +1565,13 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       redrawScene();
     };
 
+    sb.querySelector("#sel-select-all-wreaths")?.addEventListener("click", () => {
+      const ids = allWreaths().map((w) => w.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
     sb.querySelectorAll("#sel-wreath-sizes button").forEach((b) =>
       b.addEventListener("click", () => {
         const v = Number((b as HTMLElement).dataset.s);
@@ -1576,6 +1611,12 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           Drag the body to move · drag corners to resize · drag rotation handle to rotate.
         </div>
       </section>
+      ${(() => {
+        const count = allBows().length;
+        return `<section><button id="sel-select-all-bows" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All Bows (${count})
+        </button></section>`;
+      })()}
       <section>
         <h3>Size (in)</h3>
         <div class="spacing-row" id="sel-bow-sizes">
@@ -1598,6 +1639,13 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       redrawScene();
     };
 
+    sb.querySelector("#sel-select-all-bows")?.addEventListener("click", () => {
+      const ids = allBows().map((b) => b.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
     sb.querySelectorAll("#sel-bow-sizes button").forEach((b) =>
       b.addEventListener("click", () => {
         const v = Number((b as HTMLElement).dataset.s);
@@ -1631,6 +1679,12 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           ${totalFt.toFixed(1)} ft total · drag body to move · drag rotation handle to rotate
         </div>
       </section>
+      ${(() => {
+        const count = allGarlands().length;
+        return `<section><button id="sel-select-all-garlands" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All Garlands (${count})
+        </button></section>`;
+      })()}
       <section>
         <h3>Size (in)${sharedSize.length > 1 ? " — mixed" : ""}</h3>
         <div class="spacing-row" id="sel-garland-sizes">
@@ -1673,6 +1727,13 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       redrawScene();
     };
 
+    sb.querySelector("#sel-select-all-garlands")?.addEventListener("click", () => {
+      const ids = allGarlands().map((g) => g.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
     sb.querySelectorAll("#sel-garland-sizes button").forEach((b) =>
       b.addEventListener("click", () => {
         const v = Number((b as HTMLElement).dataset.s);
