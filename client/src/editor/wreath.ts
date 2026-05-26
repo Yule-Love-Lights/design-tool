@@ -2,16 +2,24 @@ import Konva from "konva";
 import type { WreathItem } from "../api";
 import { getAssetSync, loadAsset } from "./assets";
 
+// Wreaths render visually larger than 1:1 with the yardstick. The PNG has
+// transparent padding around the greenery ring, so the visible diameter is
+// smaller than the bounding box. This multiplier compensates so a "36-inch
+// wreath" actually reads as ~36 inches on the photo. Bump if Jason still
+// thinks they're small; lower if they go too big.
+const WREATH_RENDER_SCALE = 1.8;
+
 // A wreath renders as a PNG image (with-lights or without-lights variant).
 // `sizeIn` is the real-world diameter — converted to pixels via the active
-// yardstick's px/ft so wreaths scale naturally with the photo.
+// yardstick's px/ft (and then scaled by WREATH_RENDER_SCALE) so wreaths look
+// right on the photo.
 export function createWreath(
   item: WreathItem,
   pxPerFoot: number,
   requestRedraw: () => void,
 ): Konva.Group {
   const diameterFt = item.sizeIn / 12;
-  const diameterPx = Math.max(16, diameterFt * pxPerFoot);
+  const diameterPx = Math.max(16, diameterFt * pxPerFoot * WREATH_RENDER_SCALE);
 
   const group = new Konva.Group({
     id: item.id,

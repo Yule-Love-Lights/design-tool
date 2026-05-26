@@ -1,5 +1,5 @@
 import Konva from "konva";
-import { api, isStrand, isWreath, isBow, isGarland, type Design, type Scene, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type Yardstick, type BulbType, type DrawingStyle } from "../api";
+import { api, isStrand, isWreath, isBow, isGarland, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type Yardstick, type BulbType, type DrawingStyle } from "../api";
 import { COLORS, setPalette } from "../editor/colors";
 import { renderStrand, strandLengthPx } from "../editor/strand";
 import { createWreath } from "../editor/wreath";
@@ -165,6 +165,14 @@ export async function renderEditor(root: HTMLElement, designId: string) {
   // Strands and yardsticks are mutually exclusive: selecting one clears the other.
   let selectedIds = new Set<string>();
   let selectedYardstickId: string | null = null;
+
+  // --- Clipboard (Ctrl+C / Ctrl+V) ---
+  // Holds deep clones of items copied from the scene. Paste creates fresh IDs
+  // and offsets all items so their centroid lands at the cursor.
+  let clipboard: SceneItem[] = [];
+  // Most-recent cursor position in image-space; updated on stage mousemove.
+  // Used as the paste anchor so Ctrl+V puts the new items wherever the mouse is.
+  let lastImgPoint: { x: number; y: number } | null = null;
 
   // Persisted per-type defaults loaded from /api/settings/defaults at init.
   // We re-read this whenever the user switches bulb type so the relevant fields
@@ -745,6 +753,83 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     if (selectedIds.size === 0) return;
     scene = { ...scene, items: scene.items.filter((s) => !selectedIds.has(s.id)) };
     selectedIds.clear();
+    scheduleSave();
+    commit();
+    redrawScene();
+  }
+
+  // ============================================================
+  // Copy / paste (Ctrl+C / Ctrl+V)
+  // ============================================================
+
+  // Average position of every "point" across the items — polyline points for
+  // strands/garlands; (x, y) for wreaths/bows. Used as the anchor that lands
+  // on the cursor when pasting, so multi-item paste preserves relative layout.
+  function centroidOf(items: SceneItem[]): { x: number; y: number } {
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    for (const it of items) {
+      if (isStrand(it) || isGarland(it)) {
+        for (let i = 0; i < it.points.length; i += 2) {
+          sx += it.points[i];
+          sy += it.points[i + 1];
+          n++;
+        }
+      } else if (isWreath(it) || isBow(it)) {
+        sx += it.x;
+        sy += it.y;
+        n++;
+      }
+    }
+    return n === 0 ? { x: 0, y: 0 } : { x: sx / n, y: sy / n };
+  }
+
+  // Translate a single item by (dx, dy). Strands/garlands shift their polyline
+  // points; wreaths/bows shift their (x, y) center.
+  function shiftItem(it: SceneItem, dx: number, dy: number): SceneItem {
+    if (isStrand(it)) {
+      return {
+        ...it,
+        points: it.points.map((v, i) => v + (i % 2 === 0 ? dx : dy)),
+      };
+    }
+    if (isGarland(it)) {
+      return {
+        ...it,
+        points: it.points.map((v, i) => v + (i % 2 === 0 ? dx : dy)),
+      };
+    }
+    if (isWreath(it) || isBow(it)) {
+      return { ...it, x: it.x + dx, y: it.y + dy };
+    }
+    return it;
+  }
+
+  function copySelectedToClipboard() {
+    if (selectedIds.size === 0) return;
+    // Deep-clone via JSON to fully detach from the live scene.
+    clipboard = scene.items
+      .filter((i) => selectedIds.has(i.id))
+      .map((i) => JSON.parse(JSON.stringify(i)) as SceneItem);
+  }
+
+  function pasteFromClipboard() {
+    if (clipboard.length === 0) return;
+    // Anchor: cursor position if we have one, otherwise a +20px nudge from
+    // the originals so the paste is at least visible.
+    const centroid = centroidOf(clipboard);
+    const target = lastImgPoint ?? { x: centroid.x + 20, y: centroid.y + 20 };
+    const dx = target.x - centroid.x;
+    const dy = target.y - centroid.y;
+    const newItems: SceneItem[] = clipboard.map((it) => {
+      const cloned = JSON.parse(JSON.stringify(it)) as SceneItem;
+      cloned.id = cryptoId();
+      return shiftItem(cloned, dx, dy);
+    });
+    scene = { ...scene, items: [...scene.items, ...newItems] };
+    selectedIds = new Set(newItems.map((i) => i.id));
+    selectedYardstickId = null;
     scheduleSave();
     commit();
     redrawScene();
@@ -2298,6 +2383,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
   });
 
   stage.on("mousemove touchmove", () => {
+    // Track the cursor in image-space so Ctrl+V can paste at "where the mouse is".
+    const cursor = imagePoint();
+    if (cursor && inPhoto(cursor)) lastImgPoint = cursor;
+
     if (marqueeStart && marqueePreview) {
       const p = imagePoint();
       if (!p) return;
@@ -2441,6 +2530,18 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     if (meta && e.key.toLowerCase() === "y") {
       e.preventDefault();
       redo();
+      return;
+    }
+    if (meta && e.key.toLowerCase() === "c") {
+      if (selectedIds.size === 0) return; // let the browser handle (e.g. nothing to copy)
+      copySelectedToClipboard();
+      e.preventDefault();
+      return;
+    }
+    if (meta && e.key.toLowerCase() === "v") {
+      if (clipboard.length === 0) return;
+      pasteFromClipboard();
+      e.preventDefault();
       return;
     }
 
