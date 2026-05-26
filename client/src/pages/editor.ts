@@ -515,24 +515,21 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     }
     transformer.nodes(selectedItemNodes);
     // Image-backed items (wreath, bow) preserve aspect ratio while resizing so
-    // they don't get squished. Strands (line geometry) get free non-uniform scale.
-    // Garland-only selection gets rotate-only — no resize anchors at all
-    // (resizing would distort the tiled PNG stamps).
+    // they don't get squished. Strands and garlands are path geometry, so
+    // free non-uniform scale is fine — scaling bakes into the polyline points
+    // and the bulbs/stamps re-render at the same per-item size (strand bulbs
+    // via pxPerFoot, garland stamps via item.sizeIn × pxPerFoot).
     const allImageItems =
       selectedItemNodes.length > 0 &&
       selectedItemNodes.every((n) => {
         const name = (n as Konva.Group).name();
         return name === "wreath" || name === "bow";
       });
-    const allGarland =
-      selectedItemNodes.length > 0 &&
-      selectedItemNodes.every((n) => (n as Konva.Group).name() === "garland");
     transformer.keepRatio(allImageItems);
-    transformer.enabledAnchors(
-      allGarland
-        ? []
-        : ["top-left", "top-right", "bottom-left", "bottom-right", "middle-left", "middle-right", "top-center", "bottom-center"],
-    );
+    transformer.enabledAnchors([
+      "top-left", "top-right", "bottom-left", "bottom-right",
+      "middle-left", "middle-right", "top-center", "bottom-center",
+    ]);
     yardstickTransformer.nodes(selectedYardstickNode ? [selectedYardstickNode] : []);
     drawLayer.batchDraw();
     uiLayer.batchDraw();
@@ -1676,7 +1673,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       <section>
         <h3>${sel.length === 1 ? "Edit Garland" : `Edit ${sel.length} Garlands`}</h3>
         <div style="color:var(--text-dim);font-size:12px;margin-bottom:4px">
-          ${totalFt.toFixed(1)} ft total · drag body to move · drag rotation handle to rotate
+          ${totalFt.toFixed(1)} ft total · drag handles to resize/rotate · drag body to move
         </div>
       </section>
       ${(() => {
