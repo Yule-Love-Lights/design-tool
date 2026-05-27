@@ -1,5 +1,5 @@
 import Konva from "konva";
-import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, isText, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type TextItem, type Yardstick, type BulbType, type DrawingStyle } from "../api";
+import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, isText, isCustom, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type TextItem, type CustomItem, type CustomUpload, type Yardstick, type BulbType, type DrawingStyle } from "../api";
 import { COLORS, setPalette } from "../editor/colors";
 import { renderStrand, strandLengthPx } from "../editor/strand";
 import { createWreath } from "../editor/wreath";
@@ -7,8 +7,14 @@ import { createBow } from "../editor/bow";
 import { renderGarland, garlandLengthPx } from "../editor/garland";
 import { createSpritzer } from "../editor/spritzer";
 import { renderText, fontsReady, FONT_OPTIONS, DEFAULT_TEXT_SIZE_IN, type FontFamily } from "../editor/text";
+import { createCustom } from "../editor/custom";
 import { preloadAssets } from "../editor/assets";
 import { renderYardstick, pxPerFoot, yardstickLabel } from "../editor/yardstick";
+
+// Default real-world width for newly-placed custom uploads — about 3 feet,
+// big enough to spot on the photo, small enough to resize down with the
+// Transformer if needed. Aspect is preserved from the natural image.
+const DEFAULT_CUSTOM_WIDTH_IN = 36;
 
 const BULB_TYPES: { id: BulbType; label: string }[] = [
   { id: "c9", label: "C9" },
@@ -34,7 +40,7 @@ const STYLE_HELP: Record<DrawingStyle, string> = {
   single: "Click to place a single bulb.",
 };
 
-type ItemCategory = "lights" | "decor" | "text";
+type ItemCategory = "lights" | "decor" | "text" | "custom";
 type DecorType = "wreath" | "bow" | "garland" | "spritzer";
 
 type ToolState = {
@@ -72,6 +78,9 @@ type ToolState = {
   textFont: FontFamily;
   textColorId: string;
   textOutline: boolean;
+  // Custom — user-uploaded graphics, own top-level category
+  customActiveUploadPath: string | null; // imagePath of the library entry currently armed for placement
+  customAutoHalo: boolean;                // default glow setting for new placements
 };
 
 const WREATH_SIZES = [24, 36, 48, 60];
@@ -160,7 +169,33 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     textFont: "Oswald",
     textColorId: "black",
     textOutline: false,
+    customActiveUploadPath: null,
+    customAutoHalo: false,
   };
+
+  // ----- Custom-upload library (server-persisted, shared across designs) -----
+  // Fetched lazily on first entry to the Custom category and re-fetched after
+  // upload/delete. Lives at editor scope so the sidebar can re-render against
+  // the latest list without re-hitting the server every keystroke.
+  let uploads: CustomUpload[] = [];
+  let uploadsLoaded = false;
+  async function ensureUploadsLoaded(): Promise<void> {
+    if (uploadsLoaded) return;
+    try {
+      uploads = await api.listUploads();
+    } catch {
+      uploads = [];
+    }
+    uploadsLoaded = true;
+  }
+  async function refreshUploads(): Promise<void> {
+    try {
+      uploads = await api.listUploads();
+    } catch {
+      // Keep whatever we had on failure.
+    }
+    renderSidebar();
+  }
   let activeYardstickId: string | null = scene.yardsticks[0]?.id ?? null;
   let creatingYardstick = false;
   let pendingYsFeet = 0;
@@ -525,6 +560,9 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           e.cancelBubble = true;
           beginInPlaceTextEdit(g, item.id);
         });
+      } else if (isCustom(item)) {
+        g = createCustom(item, ppfForActiveYardstick(), requestCanvasRedraw);
+        g.on("transformend dragend", () => bakeTransformIntoCustom(g, item.id));
       } else {
         continue;
       }
@@ -554,8 +592,9 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         const name = (n as Konva.Group).name();
         // Spritzers are radial too — keep-ratio scaling makes more sense than
         // free non-uniform stretch, even though they're procedural not PNG.
-        // Text also keeps ratio so letters don't get squashed.
-        return name === "wreath" || name === "bow" || name === "spritzer" || name === "text";
+        // Text and custom uploads also keep ratio so their content doesn't
+        // get squashed.
+        return name === "wreath" || name === "bow" || name === "spritzer" || name === "text" || name === "custom";
       });
     transformer.keepRatio(allImageItems);
     transformer.enabledAnchors([
@@ -591,6 +630,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
 
   function allTexts(): TextItem[] {
     return scene.items.filter(isText);
+  }
+
+  function allCustoms(): CustomItem[] {
+    return scene.items.filter(isCustom);
   }
 
   // Garlands size themselves using their own yardstick (or the first one as
@@ -699,6 +742,32 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       // keyboard handler (which would undo a strand or delete a selection).
       e.stopPropagation();
     });
+  }
+
+  // Same shape as wreath/bow/text bake — average X/Y scale into widthIn so
+  // the image redraws at the new size with identity group transform. Flip
+  // state is preserved (we never touch flipH/flipV here — those are toggled
+  // via the edit panel, not the Transformer).
+  function bakeTransformIntoCustom(group: Konva.Group, customId: string) {
+    const cur = scene.items.find((i) => i.id === customId);
+    if (!cur || !isCustom(cur)) return;
+    const sx = group.scaleX();
+    const sy = group.scaleY();
+    const avgScale = (sx + sy) / 2;
+    const newWidth = Math.max(4, cur.widthIn * avgScale);
+    scene = {
+      ...scene,
+      items: scene.items.map((i) =>
+        i.id === customId && isCustom(i)
+          ? { ...i, x: group.x(), y: group.y(), widthIn: newWidth, rotation: group.rotation() }
+          : i,
+      ),
+    };
+    group.scaleX(1);
+    group.scaleY(1);
+    scheduleSave();
+    commit();
+    redrawScene();
   }
 
   // Same wreath-style bake: average scale into sizeIn, reset, commit. Rotation
@@ -910,6 +979,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       matchIds = allTexts()
         .filter((t) => t.x >= x1 && t.x <= x2 && t.y >= y1 && t.y <= y2)
         .map((t) => t.id);
+    } else if (tool.category === "custom") {
+      matchIds = allCustoms()
+        .filter((c) => c.x >= x1 && c.x <= x2 && c.y >= y1 && c.y <= y2)
+        .map((c) => c.id);
     } else if (tool.category === "decor" && tool.decorType === "garland") {
       // Decor → Garland: pick garlands that have any polyline point in the box.
       matchIds = allGarlands()
@@ -967,7 +1040,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           sy += it.points[i + 1];
           n++;
         }
-      } else if (isWreath(it) || isBow(it) || isSpritzer(it) || isText(it)) {
+      } else if (isWreath(it) || isBow(it) || isSpritzer(it) || isText(it) || isCustom(it)) {
         sx += it.x;
         sy += it.y;
         n++;
@@ -991,7 +1064,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         points: it.points.map((v, i) => v + (i % 2 === 0 ? dx : dy)),
       };
     }
-    if (isWreath(it) || isBow(it) || isSpritzer(it) || isText(it)) {
+    if (isWreath(it) || isBow(it) || isSpritzer(it) || isText(it) || isCustom(it)) {
       return { ...it, x: it.x + dx, y: it.y + dy };
     }
     return it;
@@ -1064,9 +1137,43 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           <button data-cat="lights" class="${tool.category === "lights" ? "active" : ""}">Lights</button>
           <button data-cat="decor" class="${tool.category === "decor" ? "active" : ""}">Decor</button>
           <button data-cat="text" class="${tool.category === "text" ? "active" : ""}">Text</button>
+          <button data-cat="custom" class="${tool.category === "custom" ? "active" : ""}">Custom</button>
         </div>
       </section>
-      ${tool.category === "text" ? `
+      ${tool.category === "custom" ? `
+      <section>
+        <h3>Library</h3>
+        <input type="file" id="custom-upload-input" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" style="display:none" />
+        <button id="custom-upload-btn" style="width:100%">+ Upload image</button>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">PNG/JPG/WebP/GIF/SVG up to 25 MB.</div>
+        <div id="custom-library" style="margin-top:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+          ${uploads.length === 0
+            ? `<div style="grid-column:1/-1;color:var(--text-dim);font-size:12px;padding:12px;text-align:center;border:1px dashed var(--border);border-radius:6px">No uploads yet. Click + Upload image to add one.</div>`
+            : uploads.map((u) => `
+              <div class="custom-thumb" data-path="${u.path}" data-id="${u.id}" title="${escapeAttr(u.filename)}" style="position:relative;border:2px solid ${tool.customActiveUploadPath === u.path ? "#4f8cff" : "var(--border)"};border-radius:6px;background:var(--surface-2);cursor:pointer;aspect-ratio:1;display:flex;align-items:center;justify-content:center;overflow:hidden">
+                <img src="${u.url}" alt="" style="max-width:100%;max-height:100%;object-fit:contain" />
+                <button class="custom-thumb-del" title="Remove from library" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,0.6);color:white;border:none;font-size:12px;line-height:1;cursor:pointer;padding:0">×</button>
+              </div>
+            `).join("")}
+        </div>
+      </section>
+      <section>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="custom-auto-halo" ${tool.customAutoHalo ? "checked" : ""} />
+          <span>Glow by default</span>
+        </label>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Adds a soft halo around bright pixels. Looks great for lit signs; less great for opaque photos.</div>
+      </section>
+      ${(() => {
+        const count = allCustoms().length;
+        return `<section><button id="select-all-customs" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All Customs${count > 0 ? ` (${count})` : ""}
+        </button></section>`;
+      })()}
+      <section>
+        <div class="style-help">${tool.customActiveUploadPath ? "Click anywhere on the photo to place the selected graphic." : "Pick a graphic from the library to start placing."}</div>
+      </section>
+      ` : tool.category === "text" ? `
       <section>
         <h3>Text</h3>
         <input type="text" id="tool-text" value="${escapeAttr(tool.textContent)}" placeholder="Type your text..." style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);box-sizing:border-box" />
@@ -1305,9 +1412,16 @@ export async function renderEditor(root: HTMLElement, designId: string) {
 
     sb.querySelectorAll("#categories button").forEach((b) =>
       b.addEventListener("click", () => {
-        tool.category = (b as HTMLElement).dataset.cat as ItemCategory;
+        const next = (b as HTMLElement).dataset.cat as ItemCategory;
+        tool.category = next;
         cancelInProgress();
         applyDefaultsForCurrentType();
+        // First entry into Custom triggers an uploads fetch so the library
+        // grid populates. After the first load it stays in editor state and
+        // refreshes only on upload/delete actions.
+        if (next === "custom" && !uploadsLoaded) {
+          ensureUploadsLoaded().then(() => renderSidebar());
+        }
         renderSidebar();
       }),
     );
@@ -1389,6 +1503,86 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     });
     sb.querySelector("#select-all-texts")?.addEventListener("click", () => {
       const ids = allTexts().map((t) => t.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
+    // ----- Custom category event wiring -----
+    const customFileInput = sb.querySelector("#custom-upload-input") as HTMLInputElement | null;
+    sb.querySelector("#custom-upload-btn")?.addEventListener("click", () => {
+      customFileInput?.click();
+    });
+    customFileInput?.addEventListener("change", async () => {
+      const file = customFileInput.files?.[0];
+      if (!file) return;
+      // Reset the input so the same file can be re-picked later if needed.
+      customFileInput.value = "";
+      // Upload and post-upload bookkeeping are kept in SEPARATE try blocks
+      // so a render-time error doesn't get mis-attributed as an upload error.
+      // Previously a single try wrapped both and any post-success client
+      // bug looked like "Upload failed" to the user.
+      let entry: Awaited<ReturnType<typeof api.createUpload>>;
+      try {
+        entry = await api.createUpload(file);
+      } catch (err) {
+        console.error("custom-upload failed:", err);
+        alert(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+      try {
+        uploads = [entry, ...uploads];
+        // Arm the newly-uploaded graphic so the user can immediately click
+        // on the photo to place it.
+        tool.customActiveUploadPath = entry.path;
+        renderSidebar();
+      } catch (err) {
+        console.error("custom-upload post-success error:", err);
+        // Upload itself succeeded; refresh from the server so the library at
+        // least reflects reality, then surface the real error.
+        refreshUploads();
+        alert(`Upload saved, but rendering the library threw: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    });
+    sb.querySelectorAll("#custom-library .custom-thumb").forEach((thumb) => {
+      const path = (thumb as HTMLElement).dataset.path!;
+      const id = (thumb as HTMLElement).dataset.id!;
+      thumb.addEventListener("click", (e) => {
+        // Ignore clicks on the × delete button — it has its own handler.
+        if ((e.target as HTMLElement).classList.contains("custom-thumb-del")) return;
+        tool.customActiveUploadPath = path;
+        renderSidebar();
+      });
+      const delBtn = thumb.querySelector(".custom-thumb-del") as HTMLElement | null;
+      delBtn?.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm("Remove this graphic from your library? Already-placed copies stay on their designs.")) return;
+        // Separate try blocks so a render-time error doesn't get mis-attributed
+        // to the server delete call (which is usually what's actually fine).
+        try {
+          await api.deleteUpload(id);
+        } catch (err) {
+          console.error("custom-delete failed:", err);
+          alert(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+          return;
+        }
+        try {
+          uploads = uploads.filter((u) => u.id !== id);
+          if (tool.customActiveUploadPath === path) tool.customActiveUploadPath = null;
+          renderSidebar();
+        } catch (err) {
+          console.error("custom-delete post-success error:", err);
+          refreshUploads();
+          alert(`Deleted on the server, but updating the library view threw: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    });
+    const haloCb = sb.querySelector("#custom-auto-halo") as HTMLInputElement | null;
+    haloCb?.addEventListener("change", () => {
+      tool.customAutoHalo = haloCb.checked;
+    });
+    sb.querySelector("#select-all-customs")?.addEventListener("click", () => {
+      const ids = allCustoms().map((c) => c.id);
       if (ids.length === 0) return;
       selectedIds = new Set(ids);
       selectedYardstickId = null;
@@ -1612,6 +1806,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     const garlandSel = selectedItems.filter(isGarland);
     const spritzerSel = selectedItems.filter(isSpritzer);
     const textSel = selectedItems.filter(isText);
+    const customSel = selectedItems.filter(isCustom);
 
     // All-of-one-kind → dedicated edit panel.
     if (wreathSel.length === selectedItems.length) {
@@ -1634,6 +1829,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       renderSelectedTextSidebar(sb, textSel);
       return;
     }
+    if (customSel.length === selectedItems.length) {
+      renderSelectedCustomSidebar(sb, customSel);
+      return;
+    }
     if (strandSel.length === selectedItems.length) {
       // Falls through to the strand panel below.
     } else {
@@ -1645,6 +1844,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       if (bowSel.length) counts.push(`${bowSel.length} bow${bowSel.length === 1 ? "" : "s"}`);
       if (spritzerSel.length) counts.push(`${spritzerSel.length} spritzer${spritzerSel.length === 1 ? "" : "s"}`);
       if (textSel.length) counts.push(`${textSel.length} text${textSel.length === 1 ? "" : "s"}`);
+      if (customSel.length) counts.push(`${customSel.length} custom${customSel.length === 1 ? "" : "s"}`);
       sb.innerHTML = `
         <section>
           <h3>Mixed selection</h3>
@@ -2360,6 +2560,93 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     sb.querySelector("#sel-text-delete")?.addEventListener("click", deleteSelected);
   }
 
+  // ============================================================
+  // Sidebar — edit panel for the currently selected custom upload(s)
+  // ============================================================
+  function renderSelectedCustomSidebar(sb: HTMLElement, sel: CustomItem[]) {
+    const sharedFlipH = uniq(sel.map((c) => c.flipH ?? false));
+    const sharedFlipV = uniq(sel.map((c) => c.flipV ?? false));
+    const sharedHalo = uniq(sel.map((c) => c.autoHalo ?? false));
+
+    sb.innerHTML = `
+      <section>
+        <h3>${sel.length === 1 ? "Edit Custom" : `Edit ${sel.length} Customs`}</h3>
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:4px">
+          Drag corners to resize · drag rotation handle to rotate · drag body to move.
+        </div>
+      </section>
+      ${(() => {
+        const count = allCustoms().length;
+        return `<section><button id="sel-select-all-customs" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All Customs (${count})
+        </button></section>`;
+      })()}
+      <section>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="sel-custom-flip-h" ${sharedFlipH.length === 1 && sharedFlipH[0] ? "checked" : ""} />
+          <span>Flip horizontally${sharedFlipH.length > 1 ? " (mixed)" : ""}</span>
+        </label>
+      </section>
+      <section>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="sel-custom-flip-v" ${sharedFlipV.length === 1 && sharedFlipV[0] ? "checked" : ""} />
+          <span>Flip vertically${sharedFlipV.length > 1 ? " (mixed)" : ""}</span>
+        </label>
+      </section>
+      <section>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="sel-custom-halo" ${sharedHalo.length === 1 && sharedHalo[0] ? "checked" : ""} />
+          <span>Glow${sharedHalo.length > 1 ? " (mixed)" : ""}</span>
+        </label>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Adds a soft halo around bright pixels.</div>
+      </section>
+      <section style="display:flex;gap:6px">
+        <button id="sel-custom-duplicate">Duplicate</button>
+        <button id="sel-custom-delete" class="danger">Delete</button>
+      </section>
+    `;
+
+    const updateCustoms = (mut: (c: CustomItem) => CustomItem) => {
+      scene = {
+        ...scene,
+        items: scene.items.map((i) => (isCustom(i) && selectedIds.has(i.id) ? mut(i) : i)),
+      };
+      scheduleSave();
+      commit();
+      redrawScene();
+    };
+
+    sb.querySelector("#sel-select-all-customs")?.addEventListener("click", () => {
+      const ids = allCustoms().map((c) => c.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
+    const fh = sb.querySelector("#sel-custom-flip-h") as HTMLInputElement | null;
+    fh?.addEventListener("change", () => {
+      updateCustoms((c) => ({ ...c, flipH: fh.checked }));
+    });
+    const fv = sb.querySelector("#sel-custom-flip-v") as HTMLInputElement | null;
+    fv?.addEventListener("change", () => {
+      updateCustoms((c) => ({ ...c, flipV: fv.checked }));
+    });
+    const halo = sb.querySelector("#sel-custom-halo") as HTMLInputElement | null;
+    halo?.addEventListener("change", () => {
+      updateCustoms((c) => ({ ...c, autoHalo: halo.checked }));
+    });
+
+    sb.querySelector("#sel-custom-duplicate")?.addEventListener("click", () => {
+      const newCustoms = sel.map((c) => ({ ...c, id: cryptoId(), x: c.x + 20, y: c.y + 20 }));
+      scene = { ...scene, items: [...scene.items, ...newCustoms] };
+      selectedIds = new Set(newCustoms.map((c) => c.id));
+      scheduleSave();
+      commit();
+      redrawScene();
+    });
+    sb.querySelector("#sel-custom-delete")?.addEventListener("click", deleteSelected);
+  }
+
   function uniq<T>(arr: T[]): T[] {
     return Array.from(new Set(arr));
   }
@@ -2788,6 +3075,23 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     commit();
   }
 
+  function commitCustom(p: { x: number; y: number }) {
+    if (!tool.customActiveUploadPath) return; // no graphic armed
+    const item: CustomItem = {
+      id: cryptoId(),
+      kind: "custom",
+      x: p.x,
+      y: p.y,
+      imagePath: tool.customActiveUploadPath,
+      widthIn: DEFAULT_CUSTOM_WIDTH_IN,
+      autoHalo: tool.customAutoHalo,
+      yardstickId: activeYs()?.id ?? null,
+    };
+    scene = { ...scene, items: [...scene.items, item] };
+    scheduleSave();
+    commit();
+  }
+
   function commitStrand(points: number[]) {
     if (points.length < 4) return; // need at least 2 distinct points
     const strand: StrandItem = {
@@ -3006,6 +3310,9 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     // Click on an existing text item — same.
     if (e.target.findAncestor(".text", true)) return;
 
+    // Click on an existing custom-upload item — same.
+    if (e.target.findAncestor(".custom", true)) return;
+
     // Click on either Transformer (anchor handles) — suppress draw.
     if (e.target.findAncestor("Transformer", true)) return;
 
@@ -3049,6 +3356,16 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     // Text: single click places a text item at the cursor.
     if (tool.category === "text") {
       commitText(p);
+      redrawScene();
+      return;
+    }
+
+    // Custom: single click places the currently-armed library graphic. If
+    // no graphic is armed yet, do nothing — the sidebar hint already nudges
+    // the user to pick one from the library first.
+    if (tool.category === "custom") {
+      if (!tool.customActiveUploadPath) return;
+      commitCustom(p);
       redrawScene();
       return;
     }
@@ -3351,6 +3668,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         tool.textColorId = entry.colorPattern[0];
       }
       if (typeof entry.outline === "boolean") tool.textOutline = entry.outline;
+    } else if (tool.category === "custom") {
+      const entry = savedDefaults?.["custom"];
+      if (!entry || typeof entry !== "object") return;
+      if (typeof entry.autoHalo === "boolean") tool.customAutoHalo = entry.autoHalo;
     }
   }
 

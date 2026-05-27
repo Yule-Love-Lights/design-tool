@@ -1,4 +1,4 @@
-import { api, type BulbColor, type ToolDefaults } from "../api";
+import { api, type BulbColor, type CustomUpload, type ToolDefaults } from "../api";
 import { COLORS, DEFAULT_COLORS, setPalette, suggestGlow } from "../editor/colors";
 // Keep the Google Fonts link in index.html — that's what actually loads the
 // Bebas Neue / Oswald / Pacifico / Inter faces used by the settings font
@@ -6,6 +6,7 @@ import { COLORS, DEFAULT_COLORS, setPalette, suggestGlow } from "../editor/color
 
 let palette: BulbColor[] = [];
 let defaults: ToolDefaults = {};
+let uploads: CustomUpload[] = [];
 
 // Factory defaults — kept in lockstep with server's DEFAULT_TOOL_DEFAULTS.
 // The server already returns these merged-in, but we need them client-side too
@@ -45,6 +46,9 @@ const FACTORY_DEFAULTS: ToolDefaults = {
     fontFamily: "Oswald",
     colorPattern: ["black"],
     outline: false,
+  },
+  custom: {
+    autoHalo: false,
   },
 };
 
@@ -141,6 +145,13 @@ const SECTIONS: SectionSpec[] = [
       { key: "outline", label: "Outline by default", kind: "bool" },
     ],
   },
+  {
+    key: "custom",
+    label: "Custom uploads",
+    fields: [
+      { key: "autoHalo", label: "Glow by default", kind: "bool" },
+    ],
+  },
 ];
 
 export async function renderSettings(root: HTMLElement) {
@@ -175,6 +186,22 @@ export async function renderSettings(root: HTMLElement) {
         <div id="defaults-sections">Loading…</div>
         <div class="saving" id="defaults-status"></div>
       </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Custom Graphic Library</h2>
+          <div class="actions">
+            <button id="library-upload-btn" class="primary">+ Upload image</button>
+          </div>
+        </div>
+        <p class="hint">
+          Your uploaded graphics live here and are available in every design.
+          Removing a graphic from the library doesn't affect copies already placed on designs.
+        </p>
+        <input type="file" id="library-upload-input" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" style="display:none" />
+        <div id="library-grid">Loading…</div>
+        <div class="saving" id="library-status"></div>
+      </section>
     </div>
   `;
   (root.querySelector("#back") as HTMLElement).addEventListener("click", () => {
@@ -190,14 +217,16 @@ export async function renderSettings(root: HTMLElement) {
     }, 60);
   });
 
-  // Load palette + defaults in parallel.
+  // Load palette + defaults + library in parallel.
   await Promise.all([
     api.getColors().then((c) => { palette = c; setPalette(palette); }).catch(() => { palette = [...DEFAULT_COLORS]; }),
     api.getDefaults().then((d) => { defaults = d; }).catch(() => { defaults = FACTORY_DEFAULTS; }),
+    api.listUploads().then((u) => { uploads = u; }).catch(() => { uploads = []; }),
   ]);
 
   renderPalette(root);
   renderDefaults(root);
+  renderLibrary(root);
 
   (root.querySelector("#add-color") as HTMLElement).addEventListener("click", async () => {
     const id = `custom-${Date.now().toString(36)}`;
@@ -214,6 +243,41 @@ export async function renderSettings(root: HTMLElement) {
     await savePalette(root);
     renderPalette(root);
     renderDefaults(root);
+  });
+
+  // ----- Custom library: file picker + upload handler -----
+  const libInput = root.querySelector("#library-upload-input") as HTMLInputElement;
+  (root.querySelector("#library-upload-btn") as HTMLElement).addEventListener("click", () => {
+    libInput.click();
+  });
+  libInput.addEventListener("change", async () => {
+    const file = libInput.files?.[0];
+    if (!file) return;
+    libInput.value = "";
+    const status = root.querySelector("#library-status") as HTMLElement;
+    status.textContent = "Uploading…";
+    let entry: CustomUpload;
+    try {
+      entry = await api.createUpload(file);
+    } catch (err) {
+      console.error("library-upload failed:", err);
+      status.textContent = `Upload failed: ${err instanceof Error ? err.message : String(err)}`;
+      return;
+    }
+    try {
+      uploads = [entry, ...uploads];
+      renderLibrary(root);
+      status.textContent = "Uploaded";
+      window.setTimeout(() => { if (status.textContent === "Uploaded") status.textContent = ""; }, 1500);
+    } catch (err) {
+      console.error("library-upload post-success error:", err);
+      // Server saved it; re-fetch so the UI eventually catches up.
+      try {
+        uploads = await api.listUploads();
+      } catch { /* swallow */ }
+      renderLibrary(root);
+      status.textContent = `Saved on server, but re-rendering threw: ${err instanceof Error ? err.message : String(err)}`;
+    }
   });
 }
 
@@ -252,6 +316,58 @@ function renderPalette(root: HTMLElement) {
       await savePalette(root);
       renderPalette(root);
       renderDefaults(root);
+    });
+  });
+}
+
+// Renders the Custom Graphic Library grid: every uploaded image as a thumbnail
+// with the original filename, an Active/Total count, and an × button to
+// remove from the library (file is deleted server-side; placed copies on
+// designs keep working since they reference the file path directly).
+function renderLibrary(root: HTMLElement) {
+  const wrap = root.querySelector("#library-grid") as HTMLElement;
+  if (uploads.length === 0) {
+    wrap.innerHTML = `<div style="color:var(--text-dim);font-size:13px;padding:18px;text-align:center;border:1px dashed var(--border);border-radius:8px">No graphics uploaded yet. Click + Upload image to add one.</div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px">
+      ${uploads.map((u) => `
+        <div class="library-tile" data-id="${u.id}" style="position:relative;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px">
+          <div style="aspect-ratio:1;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden">
+            <img src="${u.url}" alt="" style="max-width:100%;max-height:100%;object-fit:contain" />
+          </div>
+          <div style="font-size:11px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(u.filename)}">${escapeAttr(u.filename)}</div>
+          <button class="library-tile-del" title="Remove from library" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,0.7);color:white;border:none;font-size:14px;line-height:1;cursor:pointer;padding:0">×</button>
+        </div>
+      `).join("")}
+    </div>
+  `;
+
+  wrap.querySelectorAll<HTMLElement>(".library-tile").forEach((tile) => {
+    const id = tile.dataset.id!;
+    const filename = uploads.find((u) => u.id === id)?.filename ?? "this graphic";
+    tile.querySelector<HTMLButtonElement>(".library-tile-del")?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Remove "${filename}" from your library? Already-placed copies stay on their designs.`)) return;
+      const status = root.querySelector("#library-status") as HTMLElement;
+      status.textContent = "Deleting…";
+      try {
+        await api.deleteUpload(id);
+      } catch (err) {
+        console.error("library-delete failed:", err);
+        status.textContent = `Delete failed: ${err instanceof Error ? err.message : String(err)}`;
+        return;
+      }
+      try {
+        uploads = uploads.filter((u) => u.id !== id);
+        renderLibrary(root);
+        status.textContent = "Deleted";
+        window.setTimeout(() => { if (status.textContent === "Deleted") status.textContent = ""; }, 1500);
+      } catch (err) {
+        console.error("library-delete post-success error:", err);
+        status.textContent = `Deleted on server, but re-rendering threw: ${err instanceof Error ? err.message : String(err)}`;
+      }
     });
   });
 }

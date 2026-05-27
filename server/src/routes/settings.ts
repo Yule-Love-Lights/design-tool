@@ -91,6 +91,9 @@ export const DEFAULT_TOOL_DEFAULTS = {
     colorPattern: ["black"],
     outline: false,
   },
+  custom: {
+    autoHalo: false,
+  },
 };
 
 type ToolDefaults = Record<string, Record<string, unknown>>;

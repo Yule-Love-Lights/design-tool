@@ -107,7 +107,42 @@ export type TextItem = ItemBase & {
   outline?: boolean;
 };
 
-export type SceneItem = StrandItem | WreathItem | BowItem | GarlandItem | SpritzerItem | TextItem;
+// A user-uploaded graphic placed on the photo. `imagePath` is the on-disk
+// filename returned by /api/uploads — stored on the item directly (not via
+// upload id) so a scene survives the user removing the graphic from their
+// library: the file stays on disk and the placed item keeps rendering.
+//
+// `widthIn` is the rendered real-world width in inches; height is derived
+// from the image's natural aspect at render time. Resized via the Transformer
+// (no preset size buttons — user uploads vary too widely to enumerate).
+//
+// `autoHalo` adds a wide blurred copy underneath the image with a lighten
+// composite, giving a glow around bright pixels — useful for lit-up signs
+// or decorations, awkward for opaque photos, hence per-item toggle.
+export type CustomItem = ItemBase & {
+  kind: "custom";
+  x: number;
+  y: number;
+  imagePath: string;
+  widthIn: number;
+  rotation?: number;
+  flipH?: boolean;
+  flipV?: boolean;
+  autoHalo?: boolean;
+};
+
+export type SceneItem = StrandItem | WreathItem | BowItem | GarlandItem | SpritzerItem | TextItem | CustomItem;
+
+// One entry in the user's custom-graphic library (persisted server-side under
+// app_settings.user_uploads). Designs reference these by `path` so library
+// deletes don't break placed items.
+export type CustomUpload = {
+  id: string;
+  filename: string;
+  path: string;
+  url: string;
+  uploadedAt: number;
+};
 
 // Convenience alias kept so older imports keep working.
 export type Strand = StrandItem;
@@ -243,6 +278,23 @@ export const api = {
       body: JSON.stringify({ defaults }),
     });
   },
+  async listUploads() {
+    return req<CustomUpload[]>("/api/uploads");
+  },
+  async createUpload(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/uploads", {
+      method: "POST",
+      credentials: "include",
+      body: fd,
+    });
+    if (!res.ok) throw new Error("upload_failed");
+    return res.json() as Promise<CustomUpload>;
+  },
+  async deleteUpload(id: string) {
+    return req<{ ok: true }>(`/api/uploads/${id}`, { method: "DELETE" });
+  },
 };
 
 // Type guards used throughout the editor.
@@ -263,4 +315,7 @@ export function isSpritzer(item: SceneItem): item is SpritzerItem {
 }
 export function isText(item: SceneItem): item is TextItem {
   return item.kind === "text";
+}
+export function isCustom(item: SceneItem): item is CustomItem {
+  return item.kind === "custom";
 }
