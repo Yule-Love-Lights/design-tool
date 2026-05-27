@@ -89,7 +89,25 @@ export type SpritzerItem = ItemBase & {
   colorPattern: string[];
 };
 
-export type SceneItem = StrandItem | WreathItem | BowItem | GarlandItem | SpritzerItem;
+// A text item is lit-up letters layered on the photo. Sits at (x, y) (its
+// center), rendered in `fontFamily` at `sizeIn` real-world height (defaults
+// to 60" — matches the biggest wreath). `outline` adds a contrasting stroke
+// around each letter; the glow color comes from `colorId`'s palette entry.
+// Text sits above the brightness tint layer so it stays visible when the
+// photo is darkened — that's the whole point of the lit-up look.
+export type TextItem = ItemBase & {
+  kind: "text";
+  x: number;
+  y: number;
+  text: string;
+  fontFamily: string; // one of the FONT_OPTIONS in editor/text.ts
+  sizeIn: number;     // real-world cap height in inches
+  rotation?: number;
+  colorId: string;
+  outline?: boolean;
+};
+
+export type SceneItem = StrandItem | WreathItem | BowItem | GarlandItem | SpritzerItem | TextItem;
 
 // Convenience alias kept so older imports keep working.
 export type Strand = StrandItem;
@@ -242,4 +260,7 @@ export function isGarland(item: SceneItem): item is GarlandItem {
 }
 export function isSpritzer(item: SceneItem): item is SpritzerItem {
   return item.kind === "spritzer";
+}
+export function isText(item: SceneItem): item is TextItem {
+  return item.kind === "text";
 }

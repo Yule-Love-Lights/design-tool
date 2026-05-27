@@ -6,6 +6,7 @@ import { db } from "../db.js";
 const DEFAULT_COLORS = [
   { id: "warm-white", label: "Warm White", hex: "#ffdca8", glow: "#fff2d4", builtin: true },
   { id: "cool-white", label: "Cool White", hex: "#e0eaff", glow: "#ffffff", builtin: true },
+  { id: "black",      label: "Black",      hex: "#000000", glow: "#666666", builtin: true },
   { id: "red",        label: "Red",        hex: "#ff2a2a", glow: "#ff6a6a", builtin: true },
   { id: "green",      label: "Green",      hex: "#1aff6f", glow: "#6affac", builtin: true },
   { id: "blue",       label: "Blue",       hex: "#3a7bff", glow: "#7faaff", builtin: true },
@@ -26,7 +27,13 @@ function readColors(): BulbColor[] {
   try {
     const parsed = JSON.parse(row.value);
     if (!Array.isArray(parsed)) return DEFAULT_COLORS;
-    return parsed as BulbColor[];
+    // Backfill any new builtin colors that have been added since the user's
+    // palette was last saved — keeps custom colors intact while picking up
+    // new defaults (e.g. "black") without forcing a Reset to Defaults.
+    const stored = parsed as BulbColor[];
+    const ids = new Set(stored.map((c) => c.id));
+    const missing = DEFAULT_COLORS.filter((c) => !ids.has(c.id));
+    return missing.length === 0 ? stored : [...stored, ...missing];
   } catch {
     return DEFAULT_COLORS;
   }
@@ -78,6 +85,11 @@ export const DEFAULT_TOOL_DEFAULTS = {
   spritzer: {
     sizeIn: 24,
     colorPattern: ["warm-white"],
+  },
+  text: {
+    fontFamily: "Oswald",
+    colorPattern: ["black"],
+    outline: false,
   },
 };
 

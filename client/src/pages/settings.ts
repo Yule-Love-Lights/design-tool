@@ -1,5 +1,8 @@
 import { api, type BulbColor, type ToolDefaults } from "../api";
 import { COLORS, DEFAULT_COLORS, setPalette, suggestGlow } from "../editor/colors";
+// Keep the Google Fonts link in index.html — that's what actually loads the
+// Bebas Neue / Oswald / Pacifico / Inter faces used by the settings font
+// preview buttons here.
 
 let palette: BulbColor[] = [];
 let defaults: ToolDefaults = {};
@@ -38,6 +41,11 @@ const FACTORY_DEFAULTS: ToolDefaults = {
     sizeIn: 24,
     colorPattern: ["warm-white"],
   },
+  text: {
+    fontFamily: "Oswald",
+    colorPattern: ["black"],
+    outline: false,
+  },
 };
 
 // Spec for what a section knows how to render for a given item-type key.
@@ -47,7 +55,8 @@ type FieldSpec =
   | { key: string; label: string; kind: "style"; options: string[] }
   | { key: string; label: string; kind: "color-pattern" }
   | { key: string; label: string; kind: "number"; min: number; max: number; step: number; unit?: string }
-  | { key: string; label: string; kind: "bool" };
+  | { key: string; label: string; kind: "bool" }
+  | { key: string; label: string; kind: "font"; options: string[] };
 
 type SectionSpec = { key: string; label: string; fields: FieldSpec[] };
 
@@ -121,6 +130,15 @@ const SECTIONS: SectionSpec[] = [
     fields: [
       { key: "sizeIn", label: "Default size", kind: "spacing", options: [16, 24, 36, 48], unit: "\"" },
       { key: "colorPattern", label: "Default color", kind: "color-pattern" },
+    ],
+  },
+  {
+    key: "text",
+    label: "Text",
+    fields: [
+      { key: "fontFamily", label: "Default font", kind: "font", options: ["Bebas Neue", "Oswald", "Pacifico", "Inter"] },
+      { key: "colorPattern", label: "Default color", kind: "color-pattern" },
+      { key: "outline", label: "Outline by default", kind: "bool" },
     ],
   },
 ];
@@ -312,6 +330,17 @@ function renderField(typeKey: string, f: FieldSpec): string {
         <input type="range" data-field="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" value="${v}" />
       </div>`;
   }
+  if (f.kind === "font") {
+    // Each button previews the font in its own typeface so the picker is
+    // self-explanatory (no need to actually know what "Pacifico" looks like).
+    return `
+      <div class="defaults-field">
+        <label>${f.label}</label>
+        <div class="style-row" data-field="${f.key}" style="flex-wrap:wrap">
+          ${f.options.map((o) => `<button data-v="${o}" class="${val === o ? "active" : ""}" style="font-family:'${o}',sans-serif;font-size:14px">${o}</button>`).join("")}
+        </div>
+      </div>`;
+  }
   // bool
   return `
     <div class="defaults-field">
@@ -337,7 +366,7 @@ function wireField(
     renderDefaults(root);
   };
 
-  if (f.kind === "spacing" || f.kind === "style") {
+  if (f.kind === "spacing" || f.kind === "style" || f.kind === "font") {
     secEl.querySelectorAll(`[data-field="${f.key}"] button`).forEach((b) =>
       b.addEventListener("click", () => {
         const raw = (b as HTMLElement).dataset.v!;

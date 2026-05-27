@@ -1,11 +1,12 @@
 import Konva from "konva";
-import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type Yardstick, type BulbType, type DrawingStyle } from "../api";
+import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, isText, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type TextItem, type Yardstick, type BulbType, type DrawingStyle } from "../api";
 import { COLORS, setPalette } from "../editor/colors";
 import { renderStrand, strandLengthPx } from "../editor/strand";
 import { createWreath } from "../editor/wreath";
 import { createBow } from "../editor/bow";
 import { renderGarland, garlandLengthPx } from "../editor/garland";
 import { createSpritzer } from "../editor/spritzer";
+import { renderText, fontsReady, FONT_OPTIONS, DEFAULT_TEXT_SIZE_IN, type FontFamily } from "../editor/text";
 import { preloadAssets } from "../editor/assets";
 import { renderYardstick, pxPerFoot, yardstickLabel } from "../editor/yardstick";
 
@@ -33,7 +34,7 @@ const STYLE_HELP: Record<DrawingStyle, string> = {
   single: "Click to place a single bulb.",
 };
 
-type ItemCategory = "lights" | "decor";
+type ItemCategory = "lights" | "decor" | "text";
 type DecorType = "wreath" | "bow" | "garland" | "spritzer";
 
 type ToolState = {
@@ -66,6 +67,11 @@ type ToolState = {
   spritzerSizeIn: number;
   spritzerColorPattern: string[];
   spritzerPickerColorId: string;
+  // Text — its own top-level category
+  textContent: string;
+  textFont: FontFamily;
+  textColorId: string;
+  textOutline: boolean;
 };
 
 const WREATH_SIZES = [24, 36, 48, 60];
@@ -150,6 +156,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     spritzerSizeIn: 24,
     spritzerColorPattern: ["warm-white"],
     spritzerPickerColorId: "warm-white",
+    textContent: "Merry Christmas",
+    textFont: "Oswald",
+    textColorId: "black",
+    textOutline: false,
   };
   let activeYardstickId: string | null = scene.yardsticks[0]?.id ?? null;
   let creatingYardstick = false;
@@ -508,6 +518,13 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       } else if (isSpritzer(item)) {
         g = createSpritzer(item, ppfForActiveYardstick());
         g.on("transformend dragend", () => bakeTransformIntoSpritzer(g, item.id));
+      } else if (isText(item)) {
+        g = renderText(item, ppfForActiveYardstick());
+        g.on("transformend dragend", () => bakeTransformIntoText(g, item.id));
+        g.on("dblclick dbltap", (e) => {
+          e.cancelBubble = true;
+          beginInPlaceTextEdit(g, item.id);
+        });
       } else {
         continue;
       }
@@ -537,7 +554,8 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         const name = (n as Konva.Group).name();
         // Spritzers are radial too — keep-ratio scaling makes more sense than
         // free non-uniform stretch, even though they're procedural not PNG.
-        return name === "wreath" || name === "bow" || name === "spritzer";
+        // Text also keeps ratio so letters don't get squashed.
+        return name === "wreath" || name === "bow" || name === "spritzer" || name === "text";
       });
     transformer.keepRatio(allImageItems);
     transformer.enabledAnchors([
@@ -571,6 +589,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     return scene.items.filter(isSpritzer);
   }
 
+  function allTexts(): TextItem[] {
+    return scene.items.filter(isText);
+  }
+
   // Garlands size themselves using their own yardstick (or the first one as
   // fallback if their own was deleted), same fall-back behavior as strands.
   function yardstickForGarland(g: GarlandItem): Yardstick | null {
@@ -581,6 +603,127 @@ export async function renderEditor(root: HTMLElement, designId: string) {
   }
   function ppfForGarland(g: GarlandItem): number {
     return pxPerFoot(yardstickForGarland(g));
+  }
+
+  // Double-clicking a text item swaps the Konva text for an overlay textarea
+  // positioned over it, so the user can type to edit the actual text content
+  // in-place on the canvas. Commit on Enter (without Shift) or blur; cancel
+  // on Escape.
+  function beginInPlaceTextEdit(group: Konva.Group, textId: string) {
+    const item = scene.items.find((i) => i.id === textId);
+    if (!item || !isText(item)) return;
+    const textNode = group.findOne<Konva.Text>(".text-letters");
+    if (!textNode) return;
+    // Hide the Konva text while editing so it doesn't double up with the
+    // textarea (they'd overlap visually).
+    textNode.visible(false);
+    // Also hide selection chrome so it doesn't get in the way.
+    transformer.nodes([]);
+    drawLayer.batchDraw();
+    uiLayer.batchDraw();
+
+    // Position the textarea over the text's screen footprint. The group's
+    // (x, y) is the text's visual center (we set offsetX/Y = w/2, h/2 in the
+    // renderer), so the bounding box in screen coords is centered on the
+    // group's absolute position scaled by the current stage scale.
+    const stageContainer = stage.container();
+    const containerRect = stageContainer.getBoundingClientRect();
+    const groupAbs = group.getAbsolutePosition();
+    const widthPx = textNode.width() * stageScale;
+    const heightPx = textNode.height() * stageScale;
+    // groupAbs already accounts for stage offset + scale + group rotation
+    // origin. Position the textarea so its center matches the text center.
+    const screenX = containerRect.left + groupAbs.x;
+    const screenY = containerRect.top + groupAbs.y;
+
+    const fontSizePx = textNode.fontSize() * stageScale;
+
+    const textarea = document.createElement("textarea");
+    textarea.value = item.text;
+    textarea.style.position = "fixed";
+    textarea.style.left = `${screenX - widthPx / 2}px`;
+    textarea.style.top = `${screenY - heightPx / 2}px`;
+    textarea.style.width = `${Math.max(120, widthPx)}px`;
+    textarea.style.height = `${Math.max(40, heightPx)}px`;
+    textarea.style.fontFamily = `'${item.fontFamily}', sans-serif`;
+    textarea.style.fontSize = `${fontSizePx}px`;
+    textarea.style.lineHeight = "1";
+    textarea.style.color = "#ffffff";
+    textarea.style.background = "rgba(0, 0, 0, 0.65)";
+    textarea.style.border = "2px solid #4f8cff";
+    textarea.style.borderRadius = "6px";
+    textarea.style.padding = "4px 6px";
+    textarea.style.outline = "none";
+    textarea.style.zIndex = "1000";
+    textarea.style.resize = "none";
+    textarea.style.textAlign = "center";
+    textarea.style.transform = item.rotation ? `rotate(${item.rotation}deg)` : "";
+    textarea.style.transformOrigin = "center";
+    textarea.style.boxShadow = "0 4px 24px rgba(0,0,0,0.5)";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    let committed = false;
+    const cleanup = (newText: string | null) => {
+      if (committed) return;
+      committed = true;
+      textarea.remove();
+      textNode.visible(true);
+      if (newText !== null && newText !== item.text) {
+        scene = {
+          ...scene,
+          items: scene.items.map((i) =>
+            i.id === textId && isText(i) ? { ...i, text: newText } : i,
+          ),
+        };
+        scheduleSave();
+        commit();
+        redrawScene();
+      } else {
+        // No-op restore — just redraw to bring back the text + selection.
+        redrawScene();
+      }
+    };
+
+    textarea.addEventListener("blur", () => cleanup(textarea.value));
+    textarea.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        cleanup(textarea.value);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cleanup(null);
+      }
+      // Stop Ctrl+Z / Backspace etc. from bubbling to the editor-level
+      // keyboard handler (which would undo a strand or delete a selection).
+      e.stopPropagation();
+    });
+  }
+
+  // Same wreath-style bake: average scale into sizeIn, reset, commit. Rotation
+  // is included because text supports it (unlike spritzer / wreath / bow,
+  // text orientation matters — slanted rooftop signs etc.).
+  function bakeTransformIntoText(group: Konva.Group, textId: string) {
+    const cur = scene.items.find((i) => i.id === textId);
+    if (!cur || !isText(cur)) return;
+    const sx = group.scaleX();
+    const sy = group.scaleY();
+    const avgScale = (sx + sy) / 2;
+    const newSize = Math.max(4, cur.sizeIn * avgScale);
+    scene = {
+      ...scene,
+      items: scene.items.map((i) =>
+        i.id === textId && isText(i)
+          ? { ...i, x: group.x(), y: group.y(), sizeIn: newSize, rotation: group.rotation() }
+          : i,
+      ),
+    };
+    group.scaleX(1);
+    group.scaleY(1);
+    scheduleSave();
+    commit();
+    redrawScene();
   }
 
   // Same shape as wreath/bow bake — average the X/Y scale into sizeIn and
@@ -763,6 +906,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       matchIds = allSpritzers()
         .filter((s) => s.x >= x1 && s.x <= x2 && s.y >= y1 && s.y <= y2)
         .map((s) => s.id);
+    } else if (tool.category === "text") {
+      matchIds = allTexts()
+        .filter((t) => t.x >= x1 && t.x <= x2 && t.y >= y1 && t.y <= y2)
+        .map((t) => t.id);
     } else if (tool.category === "decor" && tool.decorType === "garland") {
       // Decor → Garland: pick garlands that have any polyline point in the box.
       matchIds = allGarlands()
@@ -820,7 +967,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           sy += it.points[i + 1];
           n++;
         }
-      } else if (isWreath(it) || isBow(it) || isSpritzer(it)) {
+      } else if (isWreath(it) || isBow(it) || isSpritzer(it) || isText(it)) {
         sx += it.x;
         sy += it.y;
         n++;
@@ -844,7 +991,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         points: it.points.map((v, i) => v + (i % 2 === 0 ? dx : dy)),
       };
     }
-    if (isWreath(it) || isBow(it) || isSpritzer(it)) {
+    if (isWreath(it) || isBow(it) || isSpritzer(it) || isText(it)) {
       return { ...it, x: it.x + dx, y: it.y + dy };
     }
     return it;
@@ -916,9 +1063,43 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         <div class="bulb-types" id="categories">
           <button data-cat="lights" class="${tool.category === "lights" ? "active" : ""}">Lights</button>
           <button data-cat="decor" class="${tool.category === "decor" ? "active" : ""}">Decor</button>
+          <button data-cat="text" class="${tool.category === "text" ? "active" : ""}">Text</button>
         </div>
       </section>
-      ${tool.category === "lights" ? `
+      ${tool.category === "text" ? `
+      <section>
+        <h3>Text</h3>
+        <input type="text" id="tool-text" value="${escapeAttr(tool.textContent)}" placeholder="Type your text..." style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);box-sizing:border-box" />
+      </section>
+      <section>
+        <h3>Font</h3>
+        <div class="bulb-types" id="text-fonts" style="flex-wrap:wrap">
+          ${FONT_OPTIONS.map((f) => `<button data-font="${f}" class="${tool.textFont === f ? "active" : ""}" style="font-family:'${f}',sans-serif;font-size:14px">${f}</button>`).join("")}
+        </div>
+      </section>
+      <section>
+        <h3>Color</h3>
+        <div class="colors" id="text-colors">
+          ${COLORS.map((c) => `<button data-c="${c.id}" title="${c.label}" style="background:${c.hex}" class="${tool.textColorId === c.id ? "active" : ""}"></button>`).join("")}
+        </div>
+      </section>
+      <section>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="text-outline" ${tool.textOutline ? "checked" : ""} />
+          <span>Outline</span>
+        </label>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Adds a contrasting stroke around each letter.</div>
+      </section>
+      ${(() => {
+        const count = allTexts().length;
+        return `<section><button id="select-all-texts" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All Texts${count > 0 ? ` (${count})` : ""}
+        </button></section>`;
+      })()}
+      <section>
+        <div class="style-help">Click anywhere on the photo to place text. Drag corners to resize.</div>
+      </section>
+      ` : tool.category === "lights" ? `
       <section>
         <h3>Bulb Type</h3>
         <div class="bulb-types" id="bulb-types">
@@ -1182,6 +1363,37 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       selectedYardstickId = null;
       redrawScene();
     });
+    // ----- Text category event wiring -----
+    const textInput = sb.querySelector("#tool-text") as HTMLInputElement | null;
+    textInput?.addEventListener("input", () => {
+      // Just update state; don't re-render the sidebar or the user loses focus
+      // mid-typing. The next render naturally picks up the new value.
+      tool.textContent = textInput.value;
+    });
+    sb.querySelectorAll("#text-fonts button").forEach((b) =>
+      b.addEventListener("click", () => {
+        tool.textFont = (b as HTMLElement).dataset.font as FontFamily;
+        renderSidebar();
+      }),
+    );
+    sb.querySelectorAll("#text-colors button").forEach((b) =>
+      b.addEventListener("click", () => {
+        tool.textColorId = (b as HTMLElement).dataset.c!;
+        renderSidebar();
+      }),
+    );
+    const textOutlineCb = sb.querySelector("#text-outline") as HTMLInputElement | null;
+    textOutlineCb?.addEventListener("change", () => {
+      tool.textOutline = textOutlineCb.checked;
+      renderSidebar();
+    });
+    sb.querySelector("#select-all-texts")?.addEventListener("click", () => {
+      const ids = allTexts().map((t) => t.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
     sb.querySelectorAll("#spritzer-sizes button").forEach((b) =>
       b.addEventListener("click", () => {
         tool.spritzerSizeIn = Number((b as HTMLElement).dataset.s);
@@ -1399,6 +1611,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     const strandSel = selectedItems.filter(isStrand);
     const garlandSel = selectedItems.filter(isGarland);
     const spritzerSel = selectedItems.filter(isSpritzer);
+    const textSel = selectedItems.filter(isText);
 
     // All-of-one-kind → dedicated edit panel.
     if (wreathSel.length === selectedItems.length) {
@@ -1417,6 +1630,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       renderSelectedSpritzerSidebar(sb, spritzerSel);
       return;
     }
+    if (textSel.length === selectedItems.length) {
+      renderSelectedTextSidebar(sb, textSel);
+      return;
+    }
     if (strandSel.length === selectedItems.length) {
       // Falls through to the strand panel below.
     } else {
@@ -1427,6 +1644,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       if (wreathSel.length) counts.push(`${wreathSel.length} wreath${wreathSel.length === 1 ? "" : "s"}`);
       if (bowSel.length) counts.push(`${bowSel.length} bow${bowSel.length === 1 ? "" : "s"}`);
       if (spritzerSel.length) counts.push(`${spritzerSel.length} spritzer${spritzerSel.length === 1 ? "" : "s"}`);
+      if (textSel.length) counts.push(`${textSel.length} text${textSel.length === 1 ? "" : "s"}`);
       sb.innerHTML = `
         <section>
           <h3>Mixed selection</h3>
@@ -2023,6 +2241,125 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     sb.querySelector("#sel-spritzer-delete")?.addEventListener("click", deleteSelected);
   }
 
+  // ============================================================
+  // Sidebar — edit panel for the currently selected text item(s)
+  // ============================================================
+  function renderSelectedTextSidebar(sb: HTMLElement, sel: TextItem[]) {
+    const sharedText = uniq(sel.map((t) => t.text));
+    const sharedFont = uniq(sel.map((t) => t.fontFamily));
+    const sharedColor = uniq(sel.map((t) => t.colorId));
+    const sharedOutline = uniq(sel.map((t) => t.outline ?? false));
+
+    sb.innerHTML = `
+      <section>
+        <h3>${sel.length === 1 ? "Edit Text" : `Edit ${sel.length} Texts`}</h3>
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:4px">
+          Drag corners to resize · drag rotation handle to rotate · drag body to move.
+        </div>
+      </section>
+      ${(() => {
+        const count = allTexts().length;
+        return `<section><button id="sel-select-all-texts" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All Texts (${count})
+        </button></section>`;
+      })()}
+      <section>
+        <h3>Text${sharedText.length > 1 ? " (mixed)" : ""}</h3>
+        <input
+          type="text"
+          id="sel-text-content"
+          value="${sharedText.length === 1 ? escapeAttr(sharedText[0]) : ""}"
+          placeholder="${sharedText.length > 1 ? "(differs across selection — type to set all)" : "Type your text..."}"
+          style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);box-sizing:border-box"
+        />
+      </section>
+      <section>
+        <h3>Font${sharedFont.length > 1 ? " (mixed)" : ""}</h3>
+        <div class="bulb-types" id="sel-text-fonts" style="flex-wrap:wrap">
+          ${FONT_OPTIONS.map((f) => `<button data-font="${f}" class="${sharedFont.length === 1 && sharedFont[0] === f ? "active" : ""}" style="font-family:'${f}',sans-serif;font-size:14px">${f}</button>`).join("")}
+        </div>
+      </section>
+      <section>
+        <h3>Color${sharedColor.length > 1 ? " (mixed)" : ""}</h3>
+        <div class="colors" id="sel-text-colors">
+          ${COLORS.map((c) => `<button data-c="${c.id}" title="${c.label}" style="background:${c.hex}" class="${sharedColor.length === 1 && sharedColor[0] === c.id ? "active" : ""}"></button>`).join("")}
+        </div>
+      </section>
+      <section>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="sel-text-outline" ${sharedOutline.length === 1 && sharedOutline[0] ? "checked" : ""} />
+          <span>Outline${sharedOutline.length > 1 ? " (mixed)" : ""}</span>
+        </label>
+      </section>
+      <section style="display:flex;gap:6px">
+        <button id="sel-text-duplicate">Duplicate</button>
+        <button id="sel-text-delete" class="danger">Delete</button>
+      </section>
+    `;
+
+    const updateTexts = (mut: (t: TextItem) => TextItem) => {
+      scene = {
+        ...scene,
+        items: scene.items.map((i) => (isText(i) && selectedIds.has(i.id) ? mut(i) : i)),
+      };
+      scheduleSave();
+      commit();
+      redrawScene();
+    };
+
+    sb.querySelector("#sel-select-all-texts")?.addEventListener("click", () => {
+      const ids = allTexts().map((t) => t.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
+
+    const ti = sb.querySelector("#sel-text-content") as HTMLInputElement | null;
+    // Live-update text content on every keystroke for instant feedback, but
+    // snapshot history only when the input commits (blur / change) so a typing
+    // burst is one Undo step instead of dozens.
+    ti?.addEventListener("input", () => {
+      const v = ti.value;
+      scene = {
+        ...scene,
+        items: scene.items.map((i) => (isText(i) && selectedIds.has(i.id) ? { ...i, text: v } : i)),
+      };
+      scheduleSave();
+      requestCanvasRedraw();
+    });
+    ti?.addEventListener("change", () => {
+      commit();
+    });
+
+    sb.querySelectorAll("#sel-text-fonts button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const f = (b as HTMLElement).dataset.font as FontFamily;
+        updateTexts((t) => ({ ...t, fontFamily: f }));
+      }),
+    );
+    sb.querySelectorAll("#sel-text-colors button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const c = (b as HTMLElement).dataset.c!;
+        updateTexts((t) => ({ ...t, colorId: c }));
+      }),
+    );
+    const ol = sb.querySelector("#sel-text-outline") as HTMLInputElement | null;
+    ol?.addEventListener("change", () => {
+      updateTexts((t) => ({ ...t, outline: ol.checked }));
+    });
+
+    sb.querySelector("#sel-text-duplicate")?.addEventListener("click", () => {
+      const newTexts = sel.map((t) => ({ ...t, id: cryptoId(), x: t.x + 20, y: t.y + 20 }));
+      scene = { ...scene, items: [...scene.items, ...newTexts] };
+      selectedIds = new Set(newTexts.map((t) => t.id));
+      scheduleSave();
+      commit();
+      redrawScene();
+    });
+    sb.querySelector("#sel-text-delete")?.addEventListener("click", deleteSelected);
+  }
+
   function uniq<T>(arr: T[]): T[] {
     return Array.from(new Set(arr));
   }
@@ -2433,6 +2770,24 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     commit();
   }
 
+  function commitText(p: { x: number; y: number }) {
+    const item: TextItem = {
+      id: cryptoId(),
+      kind: "text",
+      x: p.x,
+      y: p.y,
+      text: tool.textContent || "Text",
+      fontFamily: tool.textFont,
+      sizeIn: DEFAULT_TEXT_SIZE_IN,
+      colorId: tool.textColorId,
+      outline: tool.textOutline,
+      yardstickId: activeYs()?.id ?? null,
+    };
+    scene = { ...scene, items: [...scene.items, item] };
+    scheduleSave();
+    commit();
+  }
+
   function commitStrand(points: number[]) {
     if (points.length < 4) return; // need at least 2 distinct points
     const strand: StrandItem = {
@@ -2648,6 +3003,9 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     // Click on an existing spritzer — same deal as wreath/bow.
     if (e.target.findAncestor(".spritzer", true)) return;
 
+    // Click on an existing text item — same.
+    if (e.target.findAncestor(".text", true)) return;
+
     // Click on either Transformer (anchor handles) — suppress draw.
     if (e.target.findAncestor("Transformer", true)) return;
 
@@ -2684,6 +3042,13 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       if (tool.decorType === "wreath") commitWreath(p);
       else if (tool.decorType === "bow") commitBow(p);
       else if (tool.decorType === "spritzer") commitSpritzer(p);
+      redrawScene();
+      return;
+    }
+
+    // Text: single click places a text item at the cursor.
+    if (tool.category === "text") {
+      commitText(p);
       redrawScene();
       return;
     }
@@ -2976,6 +3341,16 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           tool.spritzerPickerColorId = cp[0];
         }
       }
+    } else if (tool.category === "text") {
+      const entry = savedDefaults?.["text"];
+      if (!entry || typeof entry !== "object") return;
+      if (typeof entry.fontFamily === "string" && FONT_OPTIONS.includes(entry.fontFamily as FontFamily)) {
+        tool.textFont = entry.fontFamily as FontFamily;
+      }
+      if (Array.isArray(entry.colorPattern) && entry.colorPattern.length > 0 && typeof entry.colorPattern[0] === "string") {
+        tool.textColorId = entry.colorPattern[0];
+      }
+      if (typeof entry.outline === "boolean") tool.textOutline = entry.outline;
     }
   }
 
@@ -2996,6 +3371,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
   // Kick off image-asset preload (wreath, etc). Doesn't block — the renderer
   // shows a placeholder if the user places one before the file finishes loading.
   preloadAssets().then(() => requestCanvasRedraw());
+  // Same idea for the Google-Fonts-hosted text fonts: if a TextItem renders
+  // before its font has arrived, it falls back to a serif. Once the browser
+  // signals fonts ready, redraw so the right typeface shows up.
+  fontsReady().then(() => requestCanvasRedraw());
   if (design.photoUrl && design.photoW && design.photoH) {
     await loadPhoto(design.photoUrl, design.photoW, design.photoH);
   }
@@ -3014,6 +3393,12 @@ function loadHTMLImage(url: string): Promise<HTMLImageElement> {
 
 function cryptoId(): string {
   return (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/-/g, "").slice(0, 12);
+}
+
+// Escape a string for safe insertion into an HTML attribute value (handles
+// quotes, ampersands, angle brackets). Used by the text item's input field.
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function downloadStage(stage: Konva.Stage, bgImg: Konva.Image, name: string) {
