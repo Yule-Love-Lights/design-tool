@@ -34,6 +34,10 @@ const FACTORY_DEFAULTS: ToolDefaults = {
     withLights: true,
     drawingStyle: "strand",
   },
+  spritzer: {
+    sizeIn: 24,
+    colorPattern: ["warm-white"],
+  },
 };
 
 // Spec for what a section knows how to render for a given item-type key.
@@ -109,6 +113,14 @@ const SECTIONS: SectionSpec[] = [
       { key: "sizeIn", label: "Default size", kind: "spacing", options: [6, 9, 12, 18, 24], unit: "\"" },
       { key: "withLights", label: "With lights by default", kind: "bool" },
       { key: "drawingStyle", label: "Default drawing style", kind: "style", options: ["strand", "trace", "single"] },
+    ],
+  },
+  {
+    key: "spritzer",
+    label: "Spritzers",
+    fields: [
+      { key: "sizeIn", label: "Default size", kind: "spacing", options: [16, 24, 36, 48], unit: "\"" },
+      { key: "colorPattern", label: "Default color", kind: "color-pattern" },
     ],
   },
 ];
@@ -193,7 +205,6 @@ function renderPalette(root: HTMLElement) {
     <div class="color-row" data-id="${c.id}">
       <input type="color" class="hex" value="${c.hex}" />
       <input type="text" class="label" value="${escapeAttr(c.label)}" placeholder="Label" />
-      <input type="color" class="glow" value="${c.glow}" title="Glow color (brightness halo)" />
       <button class="delete" title="${c.builtin ? "Built-in colors can't be deleted" : "Delete this color"}" ${c.builtin ? "disabled" : ""}>×</button>
     </div>
   `).join("");
@@ -202,25 +213,20 @@ function renderPalette(root: HTMLElement) {
     const id = (row as HTMLElement).dataset.id!;
     const hexInput = row.querySelector(".hex") as HTMLInputElement;
     const labelInput = row.querySelector(".label") as HTMLInputElement;
-    const glowInput = row.querySelector(".glow") as HTMLInputElement;
+    // Glow is auto-derived from hex via suggestGlow() — there's no separate
+    // glow input. The renderer still uses color.glow internally, it just
+    // always tracks the chosen hex so users only think about one color.
     const updateAndSave = async () => {
       palette = palette.map((c) =>
         c.id === id
-          ? { ...c, hex: hexInput.value, label: labelInput.value.trim() || c.label, glow: glowInput.value }
+          ? { ...c, hex: hexInput.value, label: labelInput.value.trim() || c.label, glow: suggestGlow(hexInput.value) }
           : c,
       );
       setPalette(palette);
       await savePalette(root);
     };
-    hexInput.addEventListener("input", () => {
-      const prev = palette.find((c) => c.id === id);
-      if (prev && prev.glow.toLowerCase() === suggestGlow(prev.hex).toLowerCase()) {
-        glowInput.value = suggestGlow(hexInput.value);
-      }
-    });
     hexInput.addEventListener("change", updateAndSave);
     labelInput.addEventListener("change", updateAndSave);
-    glowInput.addEventListener("change", updateAndSave);
     row.querySelector(".delete")?.addEventListener("click", async () => {
       const c = palette.find((x) => x.id === id);
       if (!c || c.builtin) return;

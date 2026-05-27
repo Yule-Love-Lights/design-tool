@@ -75,7 +75,21 @@ export type GarlandItem = ItemBase & {
   sizeIn?: number; // 6 / 9 / 12 / 18 / 24
 };
 
-export type SceneItem = StrandItem | WreathItem | BowItem | GarlandItem;
+// A spritzer is a procedurally rendered radial "spray" of light rays — many
+// thin colored beams emanating from a center point, each with a glowing bulb
+// at its tip, plus a halo and bright center cluster. Sits at (x, y) (its
+// center) and scales by `sizeIn` (real-world diameter). Color cycles through
+// `colorPattern` per ray, so 1-color = monochrome spray, multi-color =
+// rainbow spray (like fireworks).
+export type SpritzerItem = ItemBase & {
+  kind: "spritzer";
+  x: number;
+  y: number;
+  sizeIn: number; // 16 / 24 / 36 / 48
+  colorPattern: string[];
+};
+
+export type SceneItem = StrandItem | WreathItem | BowItem | GarlandItem | SpritzerItem;
 
 // Convenience alias kept so older imports keep working.
 export type Strand = StrandItem;
@@ -225,4 +239,7 @@ export function isBow(item: SceneItem): item is BowItem {
 }
 export function isGarland(item: SceneItem): item is GarlandItem {
   return item.kind === "garland";
+}
+export function isSpritzer(item: SceneItem): item is SpritzerItem {
+  return item.kind === "spritzer";
 }

@@ -1,10 +1,11 @@
 import Konva from "konva";
-import { api, isStrand, isWreath, isBow, isGarland, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type Yardstick, type BulbType, type DrawingStyle } from "../api";
+import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type Yardstick, type BulbType, type DrawingStyle } from "../api";
 import { COLORS, setPalette } from "../editor/colors";
 import { renderStrand, strandLengthPx } from "../editor/strand";
 import { createWreath } from "../editor/wreath";
 import { createBow } from "../editor/bow";
 import { renderGarland, garlandLengthPx } from "../editor/garland";
+import { createSpritzer } from "../editor/spritzer";
 import { preloadAssets } from "../editor/assets";
 import { renderYardstick, pxPerFoot, yardstickLabel } from "../editor/yardstick";
 
@@ -33,7 +34,7 @@ const STYLE_HELP: Record<DrawingStyle, string> = {
 };
 
 type ItemCategory = "lights" | "decor";
-type DecorType = "wreath" | "bow" | "garland";
+type DecorType = "wreath" | "bow" | "garland" | "spritzer";
 
 type ToolState = {
   category: ItemCategory;
@@ -61,11 +62,16 @@ type ToolState = {
   // Decor — garland (drawn strand-like, sized like wreath/bow)
   garlandSizeIn: number;
   garlandWithLights: boolean;
+  // Decor — spritzer (procedural radial spray, like a firework starburst)
+  spritzerSizeIn: number;
+  spritzerColorPattern: string[];
+  spritzerPickerColorId: string;
 };
 
 const WREATH_SIZES = [24, 36, 48, 60];
 const BOW_SIZES = [12, 18, 24, 36, 48];
 const GARLAND_SIZES = [6, 9, 12, 18, 24];
+const SPRITZER_SIZES = [16, 24, 36, 48];
 
 export async function renderEditor(root: HTMLElement, designId: string) {
   let design: Design;
@@ -141,6 +147,9 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     bowSizeIn: 24,
     garlandSizeIn: 12,
     garlandWithLights: true,
+    spritzerSizeIn: 24,
+    spritzerColorPattern: ["warm-white"],
+    spritzerPickerColorId: "warm-white",
   };
   let activeYardstickId: string | null = scene.yardsticks[0]?.id ?? null;
   let creatingYardstick = false;
@@ -496,6 +505,9 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         g = renderGarland(item, ppfForGarland(item), requestCanvasRedraw);
         g.draggable(true);
         g.on("transformend dragend", () => bakeTransformIntoGarland(g, item.id));
+      } else if (isSpritzer(item)) {
+        g = createSpritzer(item, ppfForActiveYardstick());
+        g.on("transformend dragend", () => bakeTransformIntoSpritzer(g, item.id));
       } else {
         continue;
       }
@@ -523,7 +535,9 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       selectedItemNodes.length > 0 &&
       selectedItemNodes.every((n) => {
         const name = (n as Konva.Group).name();
-        return name === "wreath" || name === "bow";
+        // Spritzers are radial too — keep-ratio scaling makes more sense than
+        // free non-uniform stretch, even though they're procedural not PNG.
+        return name === "wreath" || name === "bow" || name === "spritzer";
       });
     transformer.keepRatio(allImageItems);
     transformer.enabledAnchors([
@@ -553,6 +567,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     return scene.items.filter(isGarland);
   }
 
+  function allSpritzers(): SpritzerItem[] {
+    return scene.items.filter(isSpritzer);
+  }
+
   // Garlands size themselves using their own yardstick (or the first one as
   // fallback if their own was deleted), same fall-back behavior as strands.
   function yardstickForGarland(g: GarlandItem): Yardstick | null {
@@ -563,6 +581,31 @@ export async function renderEditor(root: HTMLElement, designId: string) {
   }
   function ppfForGarland(g: GarlandItem): number {
     return pxPerFoot(yardstickForGarland(g));
+  }
+
+  // Same shape as wreath/bow bake — average the X/Y scale into sizeIn and
+  // reset the transformer scale to 1 so the next render is identity. Radial
+  // shape so a single sizeIn captures everything.
+  function bakeTransformIntoSpritzer(group: Konva.Group, spritzerId: string) {
+    const cur = scene.items.find((i) => i.id === spritzerId);
+    if (!cur || !isSpritzer(cur)) return;
+    const sx = group.scaleX();
+    const sy = group.scaleY();
+    const avgScale = (sx + sy) / 2;
+    const newSize = Math.max(4, cur.sizeIn * avgScale);
+    scene = {
+      ...scene,
+      items: scene.items.map((i) =>
+        i.id === spritzerId && isSpritzer(i)
+          ? { ...i, x: group.x(), y: group.y(), sizeIn: newSize }
+          : i,
+      ),
+    };
+    group.scaleX(1);
+    group.scaleY(1);
+    scheduleSave();
+    commit();
+    redrawScene();
   }
 
   // After a Transformer move/rotate (no resize — anchors disabled for garland),
@@ -716,6 +759,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       matchIds = allBows()
         .filter((b) => b.x >= x1 && b.x <= x2 && b.y >= y1 && b.y <= y2)
         .map((b) => b.id);
+    } else if (tool.category === "decor" && tool.decorType === "spritzer") {
+      matchIds = allSpritzers()
+        .filter((s) => s.x >= x1 && s.x <= x2 && s.y >= y1 && s.y <= y2)
+        .map((s) => s.id);
     } else if (tool.category === "decor" && tool.decorType === "garland") {
       // Decor → Garland: pick garlands that have any polyline point in the box.
       matchIds = allGarlands()
@@ -773,7 +820,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           sy += it.points[i + 1];
           n++;
         }
-      } else if (isWreath(it) || isBow(it)) {
+      } else if (isWreath(it) || isBow(it) || isSpritzer(it)) {
         sx += it.x;
         sy += it.y;
         n++;
@@ -797,7 +844,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         points: it.points.map((v, i) => v + (i % 2 === 0 ? dx : dy)),
       };
     }
-    if (isWreath(it) || isBow(it)) {
+    if (isWreath(it) || isBow(it) || isSpritzer(it)) {
       return { ...it, x: it.x + dx, y: it.y + dy };
     }
     return it;
@@ -960,6 +1007,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           <button data-decor="wreath" class="${tool.decorType === "wreath" ? "active" : ""}">Wreath</button>
           <button data-decor="bow" class="${tool.decorType === "bow" ? "active" : ""}">Bow</button>
           <button data-decor="garland" class="${tool.decorType === "garland" ? "active" : ""}">Garland</button>
+          <button data-decor="spritzer" class="${tool.decorType === "spritzer" ? "active" : ""}">Spritzer</button>
         </div>
         ${(() => {
           if (tool.decorType === "wreath") {
@@ -974,9 +1022,15 @@ export async function renderEditor(root: HTMLElement, designId: string) {
               Select All Bows${count > 0 ? ` (${count})` : ""}
             </button>`;
           }
-          const count = allGarlands().length;
-          return `<button id="select-all-garlands" style="margin-top:8px;width:100%" ${count === 0 ? "disabled" : ""}>
-            Select All Garlands${count > 0 ? ` (${count})` : ""}
+          if (tool.decorType === "garland") {
+            const count = allGarlands().length;
+            return `<button id="select-all-garlands" style="margin-top:8px;width:100%" ${count === 0 ? "disabled" : ""}>
+              Select All Garlands${count > 0 ? ` (${count})` : ""}
+            </button>`;
+          }
+          const count = allSpritzers().length;
+          return `<button id="select-all-spritzers" style="margin-top:8px;width:100%" ${count === 0 ? "disabled" : ""}>
+            Select All Spritzers${count > 0 ? ` (${count})` : ""}
           </button>`;
         })()}
       </section>
@@ -1014,7 +1068,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       <section>
         <div class="style-help">Click anywhere on the photo to place a bow.</div>
       </section>
-      ` : `
+      ` : tool.decorType === "garland" ? `
       <section>
         <h3>Size (in)</h3>
         <div class="spacing-row" id="garland-sizes">
@@ -1035,6 +1089,34 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           ${STYLES.map((s) => `<button data-style="${s.id}" class="${tool.drawingStyle === s.id ? "active" : ""}">${s.label}</button>`).join("")}
         </div>
         <div class="style-help">${STYLE_HELP[tool.drawingStyle]}</div>
+      </section>
+      ` : `
+      <section>
+        <h3>Size (in)</h3>
+        <div class="spacing-row" id="spritzer-sizes">
+          ${SPRITZER_SIZES.map((s) => `<button data-s="${s}" class="${tool.spritzerSizeIn === s ? "active" : ""}">${s}"</button>`).join("")}
+        </div>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Diameter of the radial spray on the photo.</div>
+      </section>
+      <section>
+        <h3>Color</h3>
+        <div class="colors" id="spritzer-colors">
+          ${COLORS.map((c) => `<button data-c="${c.id}" title="${c.label}" style="background:${c.hex}" class="${tool.spritzerPickerColorId === c.id ? "active" : ""}"></button>`).join("")}
+        </div>
+        <div style="margin-top:8px;display:flex;gap:6px">
+          <button id="spritzer-add-color">+ Add to pattern</button>
+          <button id="spritzer-clear-pattern">Clear</button>
+          <button id="spritzer-multi" title="Set the pattern to every color in the palette">Multi</button>
+        </div>
+        <div class="pattern-row" id="spritzer-pattern">
+          ${tool.spritzerColorPattern.map((id, i) => {
+            const c = COLORS.find((cc) => cc.id === id);
+            return `<div class="swatch" data-i="${i}" style="background:${c?.hex ?? "#333"}"><button>×</button></div>`;
+          }).join("")}
+        </div>
+      </section>
+      <section>
+        <div class="style-help">Click anywhere on the photo to place a spritzer.</div>
       </section>
       `}
       `}
@@ -1092,6 +1174,53 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       selectedIds = new Set(ids);
       selectedYardstickId = null;
       redrawScene();
+    });
+    sb.querySelector("#select-all-spritzers")?.addEventListener("click", () => {
+      const ids = allSpritzers().map((s) => s.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
+    sb.querySelectorAll("#spritzer-sizes button").forEach((b) =>
+      b.addEventListener("click", () => {
+        tool.spritzerSizeIn = Number((b as HTMLElement).dataset.s);
+        renderSidebar();
+      }),
+    );
+    sb.querySelectorAll("#spritzer-colors button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const id = (b as HTMLElement).dataset.c!;
+        tool.spritzerPickerColorId = id;
+        // Replace the pattern when it's a single-color pattern; preserve
+        // multi-color patterns (user can Clear or Add-to-pattern to extend).
+        if (tool.spritzerColorPattern.length <= 1) tool.spritzerColorPattern = [id];
+        renderSidebar();
+      }),
+    );
+    sb.querySelector("#spritzer-add-color")?.addEventListener("click", () => {
+      tool.spritzerColorPattern = [...tool.spritzerColorPattern, tool.spritzerPickerColorId];
+      renderSidebar();
+    });
+    sb.querySelector("#spritzer-clear-pattern")?.addEventListener("click", () => {
+      tool.spritzerColorPattern = [tool.spritzerPickerColorId];
+      renderSidebar();
+    });
+    sb.querySelector("#spritzer-multi")?.addEventListener("click", () => {
+      // One-click rainbow: pattern = every color in the active palette.
+      tool.spritzerColorPattern = COLORS.map((c) => c.id);
+      renderSidebar();
+    });
+    sb.querySelectorAll("#spritzer-pattern .swatch button").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const i = Number(((btn as HTMLElement).parentElement as HTMLElement).dataset.i);
+        tool.spritzerColorPattern = tool.spritzerColorPattern.filter((_, idx) => idx !== i);
+        if (tool.spritzerColorPattern.length === 0) {
+          tool.spritzerColorPattern = [tool.spritzerPickerColorId];
+        }
+        renderSidebar();
+      });
     });
     sb.querySelectorAll("#wreath-sizes button").forEach((b) =>
       b.addEventListener("click", () => {
@@ -1269,6 +1398,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     const bowSel = selectedItems.filter(isBow);
     const strandSel = selectedItems.filter(isStrand);
     const garlandSel = selectedItems.filter(isGarland);
+    const spritzerSel = selectedItems.filter(isSpritzer);
 
     // All-of-one-kind → dedicated edit panel.
     if (wreathSel.length === selectedItems.length) {
@@ -1283,6 +1413,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       renderSelectedGarlandSidebar(sb, garlandSel);
       return;
     }
+    if (spritzerSel.length === selectedItems.length) {
+      renderSelectedSpritzerSidebar(sb, spritzerSel);
+      return;
+    }
     if (strandSel.length === selectedItems.length) {
       // Falls through to the strand panel below.
     } else {
@@ -1292,6 +1426,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       if (garlandSel.length) counts.push(`${garlandSel.length} garland${garlandSel.length === 1 ? "" : "s"}`);
       if (wreathSel.length) counts.push(`${wreathSel.length} wreath${wreathSel.length === 1 ? "" : "s"}`);
       if (bowSel.length) counts.push(`${bowSel.length} bow${bowSel.length === 1 ? "" : "s"}`);
+      if (spritzerSel.length) counts.push(`${spritzerSel.length} spritzer${spritzerSel.length === 1 ? "" : "s"}`);
       sb.innerHTML = `
         <section>
           <h3>Mixed selection</h3>
@@ -1765,6 +1900,129 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     sb.querySelector("#sel-garland-delete")?.addEventListener("click", deleteSelected);
   }
 
+  // ============================================================
+  // Sidebar — edit panel for the currently selected spritzer(s)
+  // ============================================================
+  function renderSelectedSpritzerSidebar(sb: HTMLElement, sel: SpritzerItem[]) {
+    const sharedSize = uniq(sel.map((s) => s.sizeIn));
+    const sharedPattern = uniq(sel.map((s) => s.colorPattern.join(",")));
+    const firstPattern = sel[0].colorPattern;
+
+    sb.innerHTML = `
+      <section>
+        <h3>${sel.length === 1 ? "Edit Spritzer" : `Edit ${sel.length} Spritzers`}</h3>
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:4px">
+          Drag the body to move · drag corners to resize.
+        </div>
+      </section>
+      ${(() => {
+        const count = allSpritzers().length;
+        return `<section><button id="sel-select-all-spritzers" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All Spritzers (${count})
+        </button></section>`;
+      })()}
+      <section>
+        <h3>Size (in)${sharedSize.length > 1 ? " — mixed" : ""}</h3>
+        <div class="spacing-row" id="sel-spritzer-sizes">
+          ${SPRITZER_SIZES.map((s) => `<button data-s="${s}" class="${sharedSize.length === 1 && sharedSize[0] === s ? "active" : ""}">${s}"</button>`).join("")}
+        </div>
+      </section>
+      <section>
+        <h3>Color${sharedPattern.length > 1 ? " (mixed)" : ""}</h3>
+        <div class="colors" id="sel-spritzer-colors">
+          ${COLORS.map((c) => `<button data-c="${c.id}" title="${c.label}" style="background:${c.hex}"></button>`).join("")}
+        </div>
+        <div style="margin-top:8px;display:flex;gap:6px">
+          <button id="sel-spritzer-add-color">+ Add to pattern</button>
+          <button id="sel-spritzer-clear-pattern">Clear</button>
+          <button id="sel-spritzer-multi" title="Set the pattern to every color in the palette">Multi</button>
+        </div>
+        ${sharedPattern.length === 1 ? `
+        <div class="pattern-row" id="sel-spritzer-pattern">
+          ${firstPattern.map((id, i) => {
+            const c = COLORS.find((cc) => cc.id === id);
+            return `<div class="swatch" data-i="${i}" style="background:${c?.hex ?? "#333"}"><button>×</button></div>`;
+          }).join("")}
+        </div>` : `
+        <div style="margin-top:8px;color:var(--text-dim);font-size:11px">
+          Patterns differ across the selection. Tap a color to replace, or use Multi for rainbow.
+        </div>`}
+      </section>
+      <section style="display:flex;gap:6px">
+        <button id="sel-spritzer-duplicate">Duplicate</button>
+        <button id="sel-spritzer-delete" class="danger">Delete</button>
+      </section>
+    `;
+
+    const updateSpritzers = (mut: (s: SpritzerItem) => SpritzerItem) => {
+      scene = {
+        ...scene,
+        items: scene.items.map((i) => (isSpritzer(i) && selectedIds.has(i.id) ? mut(i) : i)),
+      };
+      scheduleSave();
+      commit();
+      redrawScene();
+    };
+
+    sb.querySelector("#sel-select-all-spritzers")?.addEventListener("click", () => {
+      const ids = allSpritzers().map((s) => s.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
+    sb.querySelectorAll("#sel-spritzer-sizes button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const v = Number((b as HTMLElement).dataset.s);
+        updateSpritzers((s) => ({ ...s, sizeIn: v }));
+      }),
+    );
+    sb.querySelectorAll("#sel-spritzer-colors button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const id = (b as HTMLElement).dataset.c!;
+        // Tap-to-replace mirrors the strand edit panel: single-color pattern
+        // shortcut. To build a multi-color pattern from the edit panel use
+        // Add to pattern (after first replacing with the desired single color).
+        updateSpritzers((s) => ({ ...s, colorPattern: [id] }));
+      }),
+    );
+    sb.querySelector("#sel-spritzer-add-color")?.addEventListener("click", () => {
+      // Add the first color of the first selected item's pattern as a "default"
+      // to extend each selection's own pattern.
+      updateSpritzers((s) => ({
+        ...s,
+        colorPattern: [...s.colorPattern, s.colorPattern[s.colorPattern.length - 1] ?? "warm-white"],
+      }));
+    });
+    sb.querySelector("#sel-spritzer-clear-pattern")?.addEventListener("click", () => {
+      updateSpritzers((s) => ({ ...s, colorPattern: [s.colorPattern[0] ?? "warm-white"] }));
+    });
+    sb.querySelector("#sel-spritzer-multi")?.addEventListener("click", () => {
+      const all = COLORS.map((c) => c.id);
+      updateSpritzers((s) => ({ ...s, colorPattern: all }));
+    });
+    sb.querySelectorAll("#sel-spritzer-pattern .swatch button").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const i = Number(((btn as HTMLElement).parentElement as HTMLElement).dataset.i);
+        updateSpritzers((s) => {
+          const next = s.colorPattern.filter((_, idx) => idx !== i);
+          return { ...s, colorPattern: next.length === 0 ? [s.colorPattern[0] ?? "warm-white"] : next };
+        });
+      });
+    });
+
+    sb.querySelector("#sel-spritzer-duplicate")?.addEventListener("click", () => {
+      const newSpritzers = sel.map((s) => ({ ...s, id: cryptoId(), x: s.x + 20, y: s.y + 20 }));
+      scene = { ...scene, items: [...scene.items, ...newSpritzers] };
+      selectedIds = new Set(newSpritzers.map((s) => s.id));
+      scheduleSave();
+      commit();
+      redrawScene();
+    });
+    sb.querySelector("#sel-spritzer-delete")?.addEventListener("click", deleteSelected);
+  }
+
   function uniq<T>(arr: T[]): T[] {
     return Array.from(new Set(arr));
   }
@@ -2160,6 +2418,21 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     commit();
   }
 
+  function commitSpritzer(p: { x: number; y: number }) {
+    const spritzer: SpritzerItem = {
+      id: cryptoId(),
+      kind: "spritzer",
+      x: p.x,
+      y: p.y,
+      sizeIn: tool.spritzerSizeIn,
+      colorPattern: [...tool.spritzerColorPattern],
+      yardstickId: activeYs()?.id ?? null,
+    };
+    scene = { ...scene, items: [...scene.items, spritzer] };
+    scheduleSave();
+    commit();
+  }
+
   function commitStrand(points: number[]) {
     if (points.length < 4) return; // need at least 2 distinct points
     const strand: StrandItem = {
@@ -2372,6 +2645,9 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     // (Exception while a trace is in progress, same as for strands.)
     if (e.target.findAncestor(".garland", true) && !tracePts) return;
 
+    // Click on an existing spritzer — same deal as wreath/bow.
+    if (e.target.findAncestor(".spritzer", true)) return;
+
     // Click on either Transformer (anchor handles) — suppress draw.
     if (e.target.findAncestor("Transformer", true)) return;
 
@@ -2402,11 +2678,12 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     const p = imagePoint();
     if (!p || !inPhoto(p)) return;
 
-    // Decor: wreath/bow place on a single click. Garland falls through to the
-    // strand-like drawing pipeline below (Strand / Trace / Single).
+    // Decor: wreath/bow/spritzer place on a single click. Garland falls
+    // through to the strand-like drawing pipeline below (Strand/Trace/Single).
     if (tool.category === "decor" && tool.decorType !== "garland") {
       if (tool.decorType === "wreath") commitWreath(p);
       else if (tool.decorType === "bow") commitBow(p);
+      else if (tool.decorType === "spritzer") commitSpritzer(p);
       redrawScene();
       return;
     }
@@ -2688,6 +2965,17 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       const entry = savedDefaults?.["bow"];
       if (!entry || typeof entry !== "object") return;
       if (typeof entry.sizeIn === "number") tool.bowSizeIn = entry.sizeIn;
+    } else if (tool.category === "decor" && tool.decorType === "spritzer") {
+      const entry = savedDefaults?.["spritzer"];
+      if (!entry || typeof entry !== "object") return;
+      if (typeof entry.sizeIn === "number") tool.spritzerSizeIn = entry.sizeIn;
+      if (Array.isArray(entry.colorPattern) && entry.colorPattern.length > 0) {
+        const cp = entry.colorPattern.filter((c): c is string => typeof c === "string");
+        if (cp.length > 0) {
+          tool.spritzerColorPattern = cp;
+          tool.spritzerPickerColorId = cp[0];
+        }
+      }
     }
   }
 

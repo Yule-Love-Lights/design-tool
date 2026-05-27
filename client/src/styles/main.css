@@ -399,7 +399,7 @@ select:focus { outline: none; border-color: var(--accent); }
 }
 .settings .color-row {
   display: grid;
-  grid-template-columns: 48px 1fr 48px 40px;
+  grid-template-columns: 48px 1fr 40px;
   align-items: center;
   gap: 10px;
   background: var(--surface-2);

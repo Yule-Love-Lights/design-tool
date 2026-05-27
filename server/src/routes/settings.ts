@@ -75,6 +75,10 @@ export const DEFAULT_TOOL_DEFAULTS = {
     withLights: true,
     drawingStyle: "strand" as const,
   },
+  spritzer: {
+    sizeIn: 24,
+    colorPattern: ["warm-white"],
+  },
 };
 
 type ToolDefaults = Record<string, Record<string, unknown>>;
