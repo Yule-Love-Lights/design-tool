@@ -68,6 +68,12 @@ export const DEFAULT_TOOL_DEFAULTS = {
     opacity: 1,
     showCoverage: false,
   },
+  bistro: {
+    spacingIn: 12,
+    drawingStyle: "strand" as const,
+    colorPattern: ["warm-white"],
+    sagFactor: 0.10,
+  },
   wreath: {
     sizeIn: 36,
     withLights: true,
@@ -93,6 +99,10 @@ export const DEFAULT_TOOL_DEFAULTS = {
   },
   custom: {
     autoHalo: false,
+  },
+  pole: {
+    heightIn: 120,
+    baseType: "cube" as const,
   },
 };
 

@@ -1,5 +1,5 @@
 import Konva from "konva";
-import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, isText, isCustom, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type TextItem, type CustomItem, type CustomUpload, type Yardstick, type BulbType, type DrawingStyle } from "../api";
+import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, isText, isCustom, isPole, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type TextItem, type CustomItem, type CustomUpload, type PoleItem, type Yardstick, type BulbType, type DrawingStyle } from "../api";
 import { COLORS, setPalette } from "../editor/colors";
 import { renderStrand, strandLengthPx } from "../editor/strand";
 import { createWreath } from "../editor/wreath";
@@ -8,6 +8,7 @@ import { renderGarland, garlandLengthPx } from "../editor/garland";
 import { createSpritzer } from "../editor/spritzer";
 import { renderText, fontsReady, FONT_OPTIONS, DEFAULT_TEXT_SIZE_IN, type FontFamily } from "../editor/text";
 import { createCustom } from "../editor/custom";
+import { createPole } from "../editor/pole";
 import { preloadAssets } from "../editor/assets";
 import { renderYardstick, pxPerFoot, yardstickLabel } from "../editor/yardstick";
 
@@ -16,16 +17,23 @@ import { renderYardstick, pxPerFoot, yardstickLabel } from "../editor/yardstick"
 // Transformer if needed. Aspect is preserved from the natural image.
 const DEFAULT_CUSTOM_WIDTH_IN = 36;
 
+// Pole height options (in inches) and labels (in feet for the UI).
+const POLE_HEIGHTS = [96, 120, 144, 180] as const;
+type PoleBaseType = PoleItem["baseType"];
+
 const BULB_TYPES: { id: BulbType; label: string }[] = [
   { id: "c9", label: "C9" },
   { id: "permanent", label: "Permanent" },
   { id: "mini", label: "Mini" },
+  { id: "bistro", label: "Bistro" },
 ];
 
 const SPACINGS: Record<BulbType, number[]> = {
   c9: [6, 9, 12, 15, 18, 24, 36],
   mini: [4, 6, 9, 12, 18],
   permanent: [4, 6, 8, 9, 12, 15, 18, 24],
+  // Bistro spacing typical real-world range: 12"–24" between bulbs.
+  bistro: [9, 12, 15, 18, 24, 36],
 };
 
 const STYLES: { id: DrawingStyle; label: string }[] = [
@@ -40,7 +48,7 @@ const STYLE_HELP: Record<DrawingStyle, string> = {
   single: "Click to place a single bulb.",
 };
 
-type ItemCategory = "lights" | "decor" | "text" | "custom";
+type ItemCategory = "lights" | "decor" | "text" | "custom" | "poles";
 type DecorType = "wreath" | "bow" | "garland" | "spritzer";
 
 type ToolState = {
@@ -57,6 +65,8 @@ type ToolState = {
   distanceToSurfaceFt: number;
   opacity: number;
   showCoverage: boolean;
+  // Bistro-only: per-strand catenary sag as a fraction of horizontal span.
+  bistroSagFactor: number;
   // Decor sub-type
   decorType: DecorType;
   // Decor — wreath
@@ -81,6 +91,9 @@ type ToolState = {
   // Custom — user-uploaded graphics, own top-level category
   customActiveUploadPath: string | null; // imagePath of the library entry currently armed for placement
   customAutoHalo: boolean;                // default glow setting for new placements
+  // Poles — vertical supports for bistro lights, own top-level category
+  poleHeightIn: number;
+  poleBaseType: PoleBaseType;
 };
 
 const WREATH_SIZES = [24, 36, 48, 60];
@@ -154,6 +167,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     distanceToSurfaceFt: 0,
     opacity: 1,
     showCoverage: false,
+    bistroSagFactor: 0.10,
     decorType: "wreath",
     wreathSizeIn: 36,
     wreathWithLights: true,
@@ -171,6 +185,8 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     textOutline: false,
     customActiveUploadPath: null,
     customAutoHalo: false,
+    poleHeightIn: 120,
+    poleBaseType: "cube",
   };
 
   // ----- Custom-upload library (server-persisted, shared across designs) -----
@@ -563,6 +579,16 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       } else if (isCustom(item)) {
         g = createCustom(item, ppfForActiveYardstick(), requestCanvasRedraw);
         g.on("transformend dragend", () => bakeTransformIntoCustom(g, item.id));
+      } else if (isPole(item)) {
+        g = createPole(item, ppfForActiveYardstick());
+        g.on("transformend dragend", () => bakeTransformIntoPole(g, item.id));
+        // In bistro draw mode, mousedown on a pole must START A SPAN, not
+        // drag the pole. Konva's built-in draggable handler would otherwise
+        // grab the mousedown before the stage's draw handler can see it,
+        // and we'd end up moving the pole instead of drawing.
+        if (tool.category === "lights" && tool.bulbType === "bistro" && toolMode === "draw") {
+          g.draggable(false);
+        }
       } else {
         continue;
       }
@@ -570,6 +596,18 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         e.cancelBubble = true;
         // While tracing, clicks must continue the polyline — never select.
         if (tracePts) return;
+        // In bistro draw mode, clicks on poles must NOT select — they
+        // start (or end) a bistro span. Without this, after dragging a
+        // span from pole A to pole B the click event on pole B would
+        // select it instead of leaving the new strand selected.
+        if (
+          isPole(item) &&
+          tool.category === "lights" &&
+          tool.bulbType === "bistro" &&
+          toolMode === "draw"
+        ) {
+          return;
+        }
         selectedYardstickId = null;
         const additive = e.evt.shiftKey || e.evt.metaKey || e.evt.ctrlKey;
         if (!additive) selectedIds.clear();
@@ -596,11 +634,19 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         // get squashed.
         return name === "wreath" || name === "bow" || name === "spritzer" || name === "text" || name === "custom";
       });
+    const allPolesSelected =
+      selectedItemNodes.length > 0 &&
+      selectedItemNodes.every((n) => (n as Konva.Group).name() === "pole");
     transformer.keepRatio(allImageItems);
-    transformer.enabledAnchors([
-      "top-left", "top-right", "bottom-left", "bottom-right",
-      "middle-left", "middle-right", "top-center", "bottom-center",
-    ]);
+    // Poles get only the top-center anchor so dragging it changes height
+    // while the base stays put on the ground; no rotation either since
+    // poles are always vertical.
+    transformer.rotateEnabled(!allPolesSelected);
+    transformer.enabledAnchors(
+      allPolesSelected
+        ? ["top-center"]
+        : ["top-left", "top-right", "bottom-left", "bottom-right", "middle-left", "middle-right", "top-center", "bottom-center"],
+    );
     yardstickTransformer.nodes(selectedYardstickNode ? [selectedYardstickNode] : []);
     drawLayer.batchDraw();
     uiLayer.batchDraw();
@@ -634,6 +680,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
 
   function allCustoms(): CustomItem[] {
     return scene.items.filter(isCustom);
+  }
+
+  function allPoles(): PoleItem[] {
+    return scene.items.filter(isPole);
   }
 
   // Garlands size themselves using their own yardstick (or the first one as
@@ -742,6 +792,30 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       // keyboard handler (which would undo a strand or delete a selection).
       e.stopPropagation();
     });
+  }
+
+  // The pole's Transformer only exposes the top-center anchor, so dragging
+  // it scales group.scaleY and keeps the base (bottom-center) anchored.
+  // Bake scaleY into heightIn, reset scale, accept group's x/y as the new
+  // base position (drag-to-move also lands here).
+  function bakeTransformIntoPole(group: Konva.Group, poleId: string) {
+    const cur = scene.items.find((i) => i.id === poleId);
+    if (!cur || !isPole(cur)) return;
+    const sy = group.scaleY();
+    const newHeight = Math.max(8, cur.heightIn * sy);
+    scene = {
+      ...scene,
+      items: scene.items.map((i) =>
+        i.id === poleId && isPole(i)
+          ? { ...i, x: group.x(), y: group.y(), heightIn: newHeight }
+          : i,
+      ),
+    };
+    group.scaleX(1);
+    group.scaleY(1);
+    scheduleSave();
+    commit();
+    redrawScene();
   }
 
   // Same shape as wreath/bow/text bake — average X/Y scale into widthIn so
@@ -983,6 +1057,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       matchIds = allCustoms()
         .filter((c) => c.x >= x1 && c.x <= x2 && c.y >= y1 && c.y <= y2)
         .map((c) => c.id);
+    } else if (tool.category === "poles") {
+      matchIds = allPoles()
+        .filter((p) => p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2)
+        .map((p) => p.id);
     } else if (tool.category === "decor" && tool.decorType === "garland") {
       // Decor → Garland: pick garlands that have any polyline point in the box.
       matchIds = allGarlands()
@@ -1040,7 +1118,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           sy += it.points[i + 1];
           n++;
         }
-      } else if (isWreath(it) || isBow(it) || isSpritzer(it) || isText(it) || isCustom(it)) {
+      } else if (isWreath(it) || isBow(it) || isSpritzer(it) || isText(it) || isCustom(it) || isPole(it)) {
         sx += it.x;
         sy += it.y;
         n++;
@@ -1064,7 +1142,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         points: it.points.map((v, i) => v + (i % 2 === 0 ? dx : dy)),
       };
     }
-    if (isWreath(it) || isBow(it) || isSpritzer(it) || isText(it) || isCustom(it)) {
+    if (isWreath(it) || isBow(it) || isSpritzer(it) || isText(it) || isCustom(it) || isPole(it)) {
       return { ...it, x: it.x + dx, y: it.y + dy };
     }
     return it;
@@ -1133,14 +1211,40 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     sb.innerHTML = `
       <section>
         <h3>Category</h3>
-        <div class="bulb-types" id="categories">
+        <div class="bulb-types" id="categories" style="flex-wrap:wrap">
           <button data-cat="lights" class="${tool.category === "lights" ? "active" : ""}">Lights</button>
           <button data-cat="decor" class="${tool.category === "decor" ? "active" : ""}">Decor</button>
           <button data-cat="text" class="${tool.category === "text" ? "active" : ""}">Text</button>
           <button data-cat="custom" class="${tool.category === "custom" ? "active" : ""}">Custom</button>
+          <button data-cat="poles" class="${tool.category === "poles" ? "active" : ""}">Poles</button>
         </div>
       </section>
-      ${tool.category === "custom" ? `
+      ${tool.category === "poles" ? `
+      <section>
+        <h3>Base Type</h3>
+        <div class="bulb-types" id="pole-base-types">
+          <button data-base="none" class="${tool.poleBaseType === "none" ? "active" : ""}">None</button>
+          <button data-base="cube" class="${tool.poleBaseType === "cube" ? "active" : ""}">Cube</button>
+          <button data-base="barrel" class="${tool.poleBaseType === "barrel" ? "active" : ""}">Barrel</button>
+        </div>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">None for permanent in-ground installs or attaching to existing poles/buildings.</div>
+      </section>
+      <section>
+        <h3>Height</h3>
+        <div class="spacing-row" id="pole-heights">
+          ${POLE_HEIGHTS.map((h) => `<button data-h="${h}" class="${tool.poleHeightIn === h ? "active" : ""}">${h / 12} ft</button>`).join("")}
+        </div>
+      </section>
+      ${(() => {
+        const count = allPoles().length;
+        return `<section><button id="select-all-poles" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All Poles${count > 0 ? ` (${count})` : ""}
+        </button></section>`;
+      })()}
+      <section>
+        <div class="style-help">Click anywhere on the photo to place a pole. The click sets the BASE — the pole extends straight up from there.</div>
+      </section>
+      ` : tool.category === "custom" ? `
       <section>
         <h3>Library</h3>
         <input type="file" id="custom-upload-input" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" style="display:none" />
@@ -1256,6 +1360,13 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           <span>Show floor coverage</span>
         </label>
         <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">These settings apply to every new perm-light strand you draw.</div>
+      </section>
+      ` : ""}
+      ${tool.bulbType === "bistro" ? `
+      <section>
+        <h3>Sag <span id="tool-bistro-sag-val" style="float:right;color:var(--text);font-weight:400"></span></h3>
+        <input type="range" id="tool-bistro-sag" min="0" max="0.25" step="0.005" value="${tool.bistroSagFactor}" />
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">How much the cord droops between supports, as a fraction of the horizontal span. 0 = taut, 0.10 ≈ typical, 0.25 = heavy.</div>
       </section>
       ` : ""}
       <section>
@@ -1588,6 +1699,26 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       selectedYardstickId = null;
       redrawScene();
     });
+    // ----- Poles category event wiring -----
+    sb.querySelectorAll("#pole-base-types button").forEach((b) =>
+      b.addEventListener("click", () => {
+        tool.poleBaseType = (b as HTMLElement).dataset.base as PoleBaseType;
+        renderSidebar();
+      }),
+    );
+    sb.querySelectorAll("#pole-heights button").forEach((b) =>
+      b.addEventListener("click", () => {
+        tool.poleHeightIn = Number((b as HTMLElement).dataset.h);
+        renderSidebar();
+      }),
+    );
+    sb.querySelector("#select-all-poles")?.addEventListener("click", () => {
+      const ids = allPoles().map((p) => p.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
     sb.querySelectorAll("#spritzer-sizes button").forEach((b) =>
       b.addEventListener("click", () => {
         tool.spritzerSizeIn = Number((b as HTMLElement).dataset.s);
@@ -1701,6 +1832,22 @@ export async function renderEditor(root: HTMLElement, designId: string) {
         tool.showCoverage = cov.checked;
       });
     }
+    if (tool.bulbType === "bistro") {
+      // Bistro draw-time sag slider. The strand's per-item sagFactor is set
+      // from this at creation time (commitStrand / commitTraceSegments).
+      const input = sb.querySelector("#tool-bistro-sag") as HTMLInputElement | null;
+      const label = sb.querySelector("#tool-bistro-sag-val") as HTMLElement | null;
+      if (input && label) {
+        const write = () => {
+          label.textContent = `${(Number(input.value) * 100).toFixed(0)}%`;
+        };
+        write();
+        input.addEventListener("input", () => {
+          write();
+          tool.bistroSagFactor = Number(input.value);
+        });
+      }
+    }
     sb.querySelectorAll("#spacings button").forEach((b) =>
       b.addEventListener("click", () => {
         tool.spacingIn = Number((b as HTMLElement).dataset.s);
@@ -1807,6 +1954,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     const spritzerSel = selectedItems.filter(isSpritzer);
     const textSel = selectedItems.filter(isText);
     const customSel = selectedItems.filter(isCustom);
+    const poleSel = selectedItems.filter(isPole);
 
     // All-of-one-kind → dedicated edit panel.
     if (wreathSel.length === selectedItems.length) {
@@ -1833,6 +1981,10 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       renderSelectedCustomSidebar(sb, customSel);
       return;
     }
+    if (poleSel.length === selectedItems.length) {
+      renderSelectedPoleSidebar(sb, poleSel);
+      return;
+    }
     if (strandSel.length === selectedItems.length) {
       // Falls through to the strand panel below.
     } else {
@@ -1845,6 +1997,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       if (spritzerSel.length) counts.push(`${spritzerSel.length} spritzer${spritzerSel.length === 1 ? "" : "s"}`);
       if (textSel.length) counts.push(`${textSel.length} text${textSel.length === 1 ? "" : "s"}`);
       if (customSel.length) counts.push(`${customSel.length} custom${customSel.length === 1 ? "" : "s"}`);
+      if (poleSel.length) counts.push(`${poleSel.length} pole${poleSel.length === 1 ? "" : "s"}`);
       sb.innerHTML = `
         <section>
           <h3>Mixed selection</h3>
@@ -1859,6 +2012,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     }
     const sel = strandSel;
     const isPerm = sel.every((s) => s.bulbType === "permanent");
+    const isBistro = sel.every((s) => s.bulbType === "bistro");
     const sharedBulbType = uniq(sel.map((s) => s.bulbType));
     const sharedSpacing = uniq(sel.map((s) => s.spacingIn));
     const sharedPattern = uniq(sel.map((s) => s.colorPattern.join(",")));
@@ -1949,6 +2103,14 @@ export async function renderEditor(root: HTMLElement, designId: string) {
           <span>Show floor coverage</span>
         </label>
         <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">The soft horizontal glow where the cones land.</div>
+      </section>
+      ` : ""}
+
+      ${isBistro ? `
+      <section>
+        <h3>Sag <span id="sel-bistro-sag-val" style="float:right;color:var(--text);font-weight:400"></span></h3>
+        <input type="range" id="sel-bistro-sag" min="0" max="0.25" step="0.005" value="${avg(sel.map((s) => s.sagFactor ?? 0.10))}" />
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Fraction of horizontal span the cord droops. 0 = taut, 0.25 = heavy.</div>
       </section>
       ` : ""}
 
@@ -2043,6 +2205,27 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       coverageCb.addEventListener("change", () => {
         updateSelected((s) => ({ ...s, showCoverage: coverageCb.checked }));
       });
+    }
+
+    if (isBistro) {
+      // Per-strand sag slider — live updates the catenary as you drag, then
+      // snapshots history on release like the perm-light sliders.
+      const input = sb.querySelector("#sel-bistro-sag") as HTMLInputElement | null;
+      const label = sb.querySelector("#sel-bistro-sag-val") as HTMLElement | null;
+      if (input && label) {
+        const writeLabel = () => {
+          label.textContent = `${(Number(input.value) * 100).toFixed(0)}%`;
+        };
+        writeLabel();
+        input.addEventListener("input", () => {
+          writeLabel();
+          const v = Number(input.value);
+          liveUpdateSelected((s) => ({ ...s, sagFactor: v }) as Strand);
+        });
+        input.addEventListener("change", () => {
+          commit();
+        });
+      }
     }
 
     sb.querySelector("#sel-duplicate")!.addEventListener("click", () => {
@@ -2647,6 +2830,86 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     sb.querySelector("#sel-custom-delete")?.addEventListener("click", deleteSelected);
   }
 
+  // ============================================================
+  // Sidebar — edit panel for the currently selected pole(s)
+  // ============================================================
+  function renderSelectedPoleSidebar(sb: HTMLElement, sel: PoleItem[]) {
+    const sharedBase = uniq(sel.map((p) => p.baseType));
+    const sharedHeight = uniq(sel.map((p) => p.heightIn));
+
+    sb.innerHTML = `
+      <section>
+        <h3>${sel.length === 1 ? "Edit Pole" : `Edit ${sel.length} Poles`}</h3>
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:4px">
+          Drag body to move base · drag the top handle up/down to change height.
+        </div>
+      </section>
+      ${(() => {
+        const count = allPoles().length;
+        return `<section><button id="sel-select-all-poles" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All Poles (${count})
+        </button></section>`;
+      })()}
+      <section>
+        <h3>Base Type${sharedBase.length > 1 ? " (mixed)" : ""}</h3>
+        <div class="bulb-types" id="sel-pole-base-types">
+          <button data-base="none" class="${sharedBase.length === 1 && sharedBase[0] === "none" ? "active" : ""}">None</button>
+          <button data-base="cube" class="${sharedBase.length === 1 && sharedBase[0] === "cube" ? "active" : ""}">Cube</button>
+          <button data-base="barrel" class="${sharedBase.length === 1 && sharedBase[0] === "barrel" ? "active" : ""}">Barrel</button>
+        </div>
+      </section>
+      <section>
+        <h3>Height${sharedHeight.length > 1 ? " (mixed)" : ""}</h3>
+        <div class="spacing-row" id="sel-pole-heights">
+          ${POLE_HEIGHTS.map((h) => `<button data-h="${h}" class="${sharedHeight.length === 1 && sharedHeight[0] === h ? "active" : ""}">${h / 12} ft</button>`).join("")}
+        </div>
+      </section>
+      <section style="display:flex;gap:6px">
+        <button id="sel-pole-duplicate">Duplicate</button>
+        <button id="sel-pole-delete" class="danger">Delete</button>
+      </section>
+    `;
+
+    const updatePoles = (mut: (p: PoleItem) => PoleItem) => {
+      scene = {
+        ...scene,
+        items: scene.items.map((i) => (isPole(i) && selectedIds.has(i.id) ? mut(i) : i)),
+      };
+      scheduleSave();
+      commit();
+      redrawScene();
+    };
+
+    sb.querySelector("#sel-select-all-poles")?.addEventListener("click", () => {
+      const ids = allPoles().map((p) => p.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
+    sb.querySelectorAll("#sel-pole-base-types button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const v = (b as HTMLElement).dataset.base as PoleBaseType;
+        updatePoles((p) => ({ ...p, baseType: v }));
+      }),
+    );
+    sb.querySelectorAll("#sel-pole-heights button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const v = Number((b as HTMLElement).dataset.h);
+        updatePoles((p) => ({ ...p, heightIn: v }));
+      }),
+    );
+    sb.querySelector("#sel-pole-duplicate")?.addEventListener("click", () => {
+      const newPoles = sel.map((p) => ({ ...p, id: cryptoId(), x: p.x + 20, y: p.y + 20 }));
+      scene = { ...scene, items: [...scene.items, ...newPoles] };
+      selectedIds = new Set(newPoles.map((p) => p.id));
+      scheduleSave();
+      commit();
+      redrawScene();
+    });
+    sb.querySelector("#sel-pole-delete")?.addEventListener("click", deleteSelected);
+  }
+
   function uniq<T>(arr: T[]): T[] {
     return Array.from(new Set(arr));
   }
@@ -3092,6 +3355,21 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     commit();
   }
 
+  function commitPole(p: { x: number; y: number }) {
+    const pole: PoleItem = {
+      id: cryptoId(),
+      kind: "pole",
+      x: p.x,
+      y: p.y,
+      heightIn: tool.poleHeightIn,
+      baseType: tool.poleBaseType,
+      yardstickId: activeYs()?.id ?? null,
+    };
+    scene = { ...scene, items: [...scene.items, pole] };
+    scheduleSave();
+    commit();
+  }
+
   function commitStrand(points: number[]) {
     if (points.length < 4) return; // need at least 2 distinct points
     const strand: StrandItem = {
@@ -3111,8 +3389,11 @@ export async function renderEditor(root: HTMLElement, designId: string) {
   }
 
   // Only include perm-specific props on perm-light strands so other types
-  // don't carry meaningless data.
+  // don't carry meaningless data. Bistro adds its own sagFactor.
   function permPropsForNewStrand(): Partial<Strand> {
+    if (tool.bulbType === "bistro") {
+      return { sagFactor: tool.bistroSagFactor };
+    }
     if (tool.bulbType !== "permanent") return {};
     return {
       beamLengthFt: tool.beamLengthFt,
@@ -3313,6 +3594,15 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     // Click on an existing custom-upload item — same.
     if (e.target.findAncestor(".custom", true)) return;
 
+    // Click on an existing pole — normally bails out so the pole gets
+    // selected. EXCEPTION: in bistro draw mode the user is connecting
+    // poles with light spans, so clicks on poles must fall through to the
+    // strand-drawing pipeline (and the start point of the span will be
+    // wherever they clicked on the pole).
+    const drawingBistroNow =
+      tool.category === "lights" && tool.bulbType === "bistro" && toolMode === "draw";
+    if (e.target.findAncestor(".pole", true) && !drawingBistroNow) return;
+
     // Click on either Transformer (anchor handles) — suppress draw.
     if (e.target.findAncestor("Transformer", true)) return;
 
@@ -3366,6 +3656,13 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     if (tool.category === "custom") {
       if (!tool.customActiveUploadPath) return;
       commitCustom(p);
+      redrawScene();
+      return;
+    }
+
+    // Poles: single click places a pole at the cursor (base on the ground).
+    if (tool.category === "poles") {
+      commitPole(p);
       redrawScene();
       return;
     }
@@ -3633,6 +3930,7 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       if (typeof entry.distanceToSurfaceFt === "number") tool.distanceToSurfaceFt = entry.distanceToSurfaceFt;
       if (typeof entry.opacity === "number") tool.opacity = entry.opacity;
       if (typeof entry.showCoverage === "boolean") tool.showCoverage = entry.showCoverage;
+      if (typeof entry.sagFactor === "number") tool.bistroSagFactor = entry.sagFactor;
     } else if (tool.category === "decor" && tool.decorType === "wreath") {
       const entry = savedDefaults?.["wreath"];
       if (!entry || typeof entry !== "object") return;
@@ -3672,6 +3970,13 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       const entry = savedDefaults?.["custom"];
       if (!entry || typeof entry !== "object") return;
       if (typeof entry.autoHalo === "boolean") tool.customAutoHalo = entry.autoHalo;
+    } else if (tool.category === "poles") {
+      const entry = savedDefaults?.["pole"];
+      if (!entry || typeof entry !== "object") return;
+      if (typeof entry.heightIn === "number") tool.poleHeightIn = entry.heightIn;
+      if (entry.baseType === "none" || entry.baseType === "cube" || entry.baseType === "barrel") {
+        tool.poleBaseType = entry.baseType;
+      }
     }
   }
 

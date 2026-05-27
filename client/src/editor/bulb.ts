@@ -14,6 +14,10 @@ const TYPE: Record<
   permanent: { radiusFt: 0.035, haloMul: 2.0, coreSoftness: 0.35, minPx: 2 },
   // Mini lights: small but with a clear glow halo — visible like little stars.
   mini:      { radiusFt: 0.028, haloMul: 2.1, coreSoftness: 0.25, minPx: 1.8 },
+  // Bistro / Edison-style bulbs: bigger, warmer, more pronounced halo. The
+  // signature outdoor-patio / cafe look — these are 5–10× the visual weight
+  // of a mini, so they need a chunky radius + big soft glow.
+  bistro:    { radiusFt: 0.11,  haloMul: 3.0, coreSoftness: 0.55, minPx: 4.5 },
 };
 
 export function bulbDims(bulbType: BulbType, pxPerFoot: number) {

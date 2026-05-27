@@ -7,7 +7,7 @@ export type Yardstick = {
   height: number;
 };
 
-export type BulbType = "c9" | "mini" | "permanent";
+export type BulbType = "c9" | "mini" | "permanent" | "bistro";
 export type DrawingStyle = "strand" | "trace" | "single";
 
 // ----- Items -----
@@ -27,12 +27,16 @@ export type StrandItem = ItemBase & {
   drawingStyle: DrawingStyle;
   colorPattern: string[];
   points: number[];
-  // Permanent-light-only props (ignored for c9 / mini).
+  // Permanent-light-only props (ignored for c9 / mini / bistro).
   beamLengthFt?: number;
   beamWidthFt?: number;
   distanceToSurfaceFt?: number;
   opacity?: number;
   showCoverage?: boolean;
+  // Bistro-only: catenary sag amount as a fraction of the horizontal span
+  // length. 0 = taut chord, 0.10 = typical real-world droop, 0.25 = heavy.
+  // Ignored for non-bistro strands.
+  sagFactor?: number;
 };
 
 // A wreath sits at (x, y) (its center) and renders as a green ring of greenery
@@ -131,7 +135,21 @@ export type CustomItem = ItemBase & {
   autoHalo?: boolean;
 };
 
-export type SceneItem = StrandItem | WreathItem | BowItem | GarlandItem | SpritzerItem | TextItem | CustomItem;
+// A pole is a vertical support for bistro lights. `x, y` is the base on the
+// ground; the pole extends upward by `heightIn × pxPerFoot`. `baseType`
+// picks the planter/weight at the bottom: "none" for permanent in-ground
+// installs or supports attached to existing structure, "cube" for the wooden
+// box base, "barrel" for the round wine-barrel-style base. No rotation —
+// poles are always vertical.
+export type PoleItem = ItemBase & {
+  kind: "pole";
+  x: number;
+  y: number;
+  heightIn: number; // 96 / 120 / 144 / 180 typical (8 / 10 / 12 / 15 ft)
+  baseType: "none" | "cube" | "barrel";
+};
+
+export type SceneItem = StrandItem | WreathItem | BowItem | GarlandItem | SpritzerItem | TextItem | CustomItem | PoleItem;
 
 // One entry in the user's custom-graphic library (persisted server-side under
 // app_settings.user_uploads). Designs reference these by `path` so library
@@ -318,4 +336,7 @@ export function isText(item: SceneItem): item is TextItem {
 }
 export function isCustom(item: SceneItem): item is CustomItem {
   return item.kind === "custom";
+}
+export function isPole(item: SceneItem): item is PoleItem {
+  return item.kind === "pole";
 }

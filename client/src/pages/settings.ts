@@ -11,7 +11,7 @@ let uploads: CustomUpload[] = [];
 // Settings is split into tabs so the user isn't scrolling through one
 // long stack of every-item-type defaults. Tab persists in module state
 // across renders during a single visit; resets to "palette" on remount.
-type SettingsTab = "palette" | "lights" | "decor" | "text" | "custom";
+type SettingsTab = "palette" | "lights" | "decor" | "text" | "custom" | "poles";
 let activeTab: SettingsTab = "palette";
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "palette", label: "Palette" },
@@ -19,6 +19,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: "decor", label: "Decor" },
   { id: "text", label: "Text" },
   { id: "custom", label: "Custom" },
+  { id: "poles", label: "Poles" },
 ];
 
 // Maps each defaults-section key to the tab it lives under. Categories
@@ -28,12 +29,14 @@ const SECTION_TAB: Record<string, SettingsTab> = {
   c9: "lights",
   mini: "lights",
   permanent: "lights",
+  bistro: "lights",
   wreath: "decor",
   bow: "decor",
   garland: "decor",
   spritzer: "decor",
   text: "text",
   custom: "custom",
+  pole: "poles",
 };
 
 // Factory defaults — kept in lockstep with server's DEFAULT_TOOL_DEFAULTS.
@@ -51,6 +54,12 @@ const FACTORY_DEFAULTS: ToolDefaults = {
     distanceToSurfaceFt: 0,
     opacity: 1,
     showCoverage: false,
+  },
+  bistro: {
+    spacingIn: 12,
+    drawingStyle: "strand",
+    colorPattern: ["warm-white"],
+    sagFactor: 0.10,
   },
   wreath: {
     sizeIn: 36,
@@ -78,6 +87,10 @@ const FACTORY_DEFAULTS: ToolDefaults = {
   custom: {
     autoHalo: false,
   },
+  pole: {
+    heightIn: 120,
+    baseType: "cube",
+  },
 };
 
 // Spec for what a section knows how to render for a given item-type key.
@@ -96,6 +109,7 @@ const SPACINGS_BY_TYPE: Record<string, number[]> = {
   c9: [6, 9, 12, 15, 18, 24, 36],
   mini: [4, 6, 9, 12, 18],
   permanent: [4, 6, 8, 9, 12, 15, 18, 24],
+  bistro: [9, 12, 15, 18, 24, 36],
 };
 
 const SECTIONS: SectionSpec[] = [
@@ -129,6 +143,16 @@ const SECTIONS: SectionSpec[] = [
       { key: "distanceToSurfaceFt", label: "Default distance to surface", kind: "number", min: 0, max: 5, step: 0.1, unit: " ft" },
       { key: "opacity", label: "Default opacity", kind: "number", min: 0.1, max: 1, step: 0.01 },
       { key: "showCoverage", label: "Show floor coverage by default", kind: "bool" },
+    ],
+  },
+  {
+    key: "bistro",
+    label: "Bistro Lights",
+    fields: [
+      { key: "spacingIn", label: "Default spacing", kind: "spacing", options: [9, 12, 15, 18, 24, 36], unit: "\"" },
+      { key: "drawingStyle", label: "Default drawing style", kind: "style", options: ["strand", "trace", "single"] },
+      { key: "colorPattern", label: "Default color", kind: "color-pattern" },
+      { key: "sagFactor", label: "Default sag", kind: "number", min: 0, max: 0.25, step: 0.005 },
     ],
   },
   {
@@ -178,6 +202,14 @@ const SECTIONS: SectionSpec[] = [
     label: "Custom uploads",
     fields: [
       { key: "autoHalo", label: "Glow by default", kind: "bool" },
+    ],
+  },
+  {
+    key: "pole",
+    label: "Poles",
+    fields: [
+      { key: "heightIn", label: "Default height", kind: "spacing", options: [96, 120, 144, 180], unit: "\"" },
+      { key: "baseType", label: "Default base type", kind: "style", options: ["none", "cube", "barrel"] },
     ],
   },
 ];
