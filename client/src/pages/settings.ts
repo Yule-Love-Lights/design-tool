@@ -8,6 +8,34 @@ let palette: BulbColor[] = [];
 let defaults: ToolDefaults = {};
 let uploads: CustomUpload[] = [];
 
+// Settings is split into tabs so the user isn't scrolling through one
+// long stack of every-item-type defaults. Tab persists in module state
+// across renders during a single visit; resets to "palette" on remount.
+type SettingsTab = "palette" | "lights" | "decor" | "text" | "custom";
+let activeTab: SettingsTab = "palette";
+const TABS: { id: SettingsTab; label: string }[] = [
+  { id: "palette", label: "Palette" },
+  { id: "lights", label: "Lights" },
+  { id: "decor", label: "Decor" },
+  { id: "text", label: "Text" },
+  { id: "custom", label: "Custom" },
+];
+
+// Maps each defaults-section key to the tab it lives under. Categories
+// match the editor's top-level category bar so users have one mental
+// model for "where does this item live".
+const SECTION_TAB: Record<string, SettingsTab> = {
+  c9: "lights",
+  mini: "lights",
+  permanent: "lights",
+  wreath: "decor",
+  bow: "decor",
+  garland: "decor",
+  spritzer: "decor",
+  text: "text",
+  custom: "custom",
+};
+
 // Factory defaults — kept in lockstep with server's DEFAULT_TOOL_DEFAULTS.
 // The server already returns these merged-in, but we need them client-side too
 // for the per-type "Reset" buttons.
@@ -155,53 +183,18 @@ const SECTIONS: SectionSpec[] = [
 ];
 
 export async function renderSettings(root: HTMLElement) {
+  // Shell: header + tab bar + a content container that gets replaced when
+  // the active tab changes. The file input is always in the DOM but hidden
+  // so the click handler can reach it regardless of which tab is visible.
   root.innerHTML = `
     <div class="settings">
       <header>
         <button class="icon" id="back" title="Back to designs">←</button>
         <h1>Settings</h1>
       </header>
-      <section class="card">
-        <div class="card-head">
-          <h2>Color Palette</h2>
-          <div class="actions">
-            <button id="reset-palette">Reset to defaults</button>
-            <button id="add-color" class="primary">+ Add color</button>
-          </div>
-        </div>
-        <p class="hint">
-          These colors are available wherever you can pick a color (lights, spritzers, etc.).
-          Changes persist across every project and design. Built-in colors can be edited but not deleted.
-        </p>
-        <div class="palette" id="palette">Loading…</div>
-        <div class="saving" id="palette-status"></div>
-      </section>
-
-      <section class="card">
-        <h2 style="margin:0 0 4px">Default Item Settings</h2>
-        <p class="hint">
-          These are the values applied automatically when you start drawing a new item.
-          You can still tweak them per-strand in the editor — this only changes the starting point.
-        </p>
-        <div id="defaults-sections">Loading…</div>
-        <div class="saving" id="defaults-status"></div>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
-          <h2>Custom Graphic Library</h2>
-          <div class="actions">
-            <button id="library-upload-btn" class="primary">+ Upload image</button>
-          </div>
-        </div>
-        <p class="hint">
-          Your uploaded graphics live here and are available in every design.
-          Removing a graphic from the library doesn't affect copies already placed on designs.
-        </p>
-        <input type="file" id="library-upload-input" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" style="display:none" />
-        <div id="library-grid">Loading…</div>
-        <div class="saving" id="library-status"></div>
-      </section>
+      <div class="settings-tabs" id="settings-tabs" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap"></div>
+      <input type="file" id="library-upload-input" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" style="display:none" />
+      <div id="settings-content"></div>
     </div>
   `;
   (root.querySelector("#back") as HTMLElement).addEventListener("click", () => {
@@ -224,61 +217,155 @@ export async function renderSettings(root: HTMLElement) {
     api.listUploads().then((u) => { uploads = u; }).catch(() => { uploads = []; }),
   ]);
 
-  renderPalette(root);
-  renderDefaults(root);
-  renderLibrary(root);
+  renderTabs(root);
+  renderActiveTab(root);
 
-  (root.querySelector("#add-color") as HTMLElement).addEventListener("click", async () => {
-    const id = `custom-${Date.now().toString(36)}`;
-    const hex = "#ffaaff";
-    palette = [...palette, { id, label: "New color", hex, glow: suggestGlow(hex) }];
-    await savePalette(root);
-    renderPalette(root);
-    renderDefaults(root); // color-pattern pickers reference the palette
-  });
-
-  (root.querySelector("#reset-palette") as HTMLElement).addEventListener("click", async () => {
-    if (!confirm("Reset the palette to the factory defaults? Your custom colors will be removed.")) return;
-    palette = DEFAULT_COLORS.map((c) => ({ ...c }));
-    await savePalette(root);
-    renderPalette(root);
-    renderDefaults(root);
-  });
-
-  // ----- Custom library: file picker + upload handler -----
+  // The library's hidden file input lives outside the swappable tab content
+  // so its change handler stays bound across tab switches. The corresponding
+  // + Upload button is inside the Custom tab; we wire it during that tab's
+  // render and click() this input from there.
   const libInput = root.querySelector("#library-upload-input") as HTMLInputElement;
-  (root.querySelector("#library-upload-btn") as HTMLElement).addEventListener("click", () => {
-    libInput.click();
-  });
   libInput.addEventListener("change", async () => {
     const file = libInput.files?.[0];
     if (!file) return;
     libInput.value = "";
-    const status = root.querySelector("#library-status") as HTMLElement;
-    status.textContent = "Uploading…";
+    const status = root.querySelector("#library-status") as HTMLElement | null;
+    if (status) status.textContent = "Uploading…";
     let entry: CustomUpload;
     try {
       entry = await api.createUpload(file);
     } catch (err) {
       console.error("library-upload failed:", err);
-      status.textContent = `Upload failed: ${err instanceof Error ? err.message : String(err)}`;
+      alert(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
+      if (status) status.textContent = "";
       return;
     }
     try {
       uploads = [entry, ...uploads];
-      renderLibrary(root);
-      status.textContent = "Uploaded";
-      window.setTimeout(() => { if (status.textContent === "Uploaded") status.textContent = ""; }, 1500);
+      // Only re-render if we're still on the Custom tab — the library lives
+      // there and the user may have switched away mid-upload.
+      if (activeTab === "custom") renderActiveTab(root);
+      const s = root.querySelector("#library-status") as HTMLElement | null;
+      if (s) {
+        s.textContent = "Uploaded";
+        window.setTimeout(() => { if (s.textContent === "Uploaded") s.textContent = ""; }, 1500);
+      }
     } catch (err) {
       console.error("library-upload post-success error:", err);
-      // Server saved it; re-fetch so the UI eventually catches up.
       try {
         uploads = await api.listUploads();
       } catch { /* swallow */ }
-      renderLibrary(root);
-      status.textContent = `Saved on server, but re-rendering threw: ${err instanceof Error ? err.message : String(err)}`;
+      if (activeTab === "custom") renderActiveTab(root);
+      alert(`Saved on server, but re-rendering threw: ${err instanceof Error ? err.message : String(err)}`);
     }
   });
+}
+
+// Tab bar at the top. Clicking a tab swaps the content area below; the
+// settings shell (header, tab bar, hidden file input) stays put so we
+// don't lose the file input's change-event binding mid-upload.
+function renderTabs(root: HTMLElement) {
+  const bar = root.querySelector("#settings-tabs") as HTMLElement;
+  bar.innerHTML = TABS.map(
+    (t) => `<button class="settings-tab${activeTab === t.id ? " active" : ""}" data-tab="${t.id}" style="padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:${activeTab === t.id ? "var(--accent, #4f8cff)" : "var(--surface-2)"};color:${activeTab === t.id ? "white" : "var(--text)"};cursor:pointer;font-weight:${activeTab === t.id ? "600" : "400"}">${t.label}</button>`,
+  ).join("");
+  bar.querySelectorAll<HTMLButtonElement>("button[data-tab]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const next = b.dataset.tab as SettingsTab;
+      if (next === activeTab) return;
+      activeTab = next;
+      renderTabs(root); // update active-state styling
+      renderActiveTab(root);
+    });
+  });
+}
+
+// Renders the content for the currently-selected tab into #settings-content.
+// Each branch is responsible for its own DOM + event wiring; previous
+// listeners die with the old DOM when innerHTML is replaced.
+function renderActiveTab(root: HTMLElement) {
+  const wrap = root.querySelector("#settings-content") as HTMLElement;
+  if (activeTab === "palette") {
+    wrap.innerHTML = `
+      <section class="card">
+        <div class="card-head">
+          <h2>Color Palette</h2>
+          <div class="actions">
+            <button id="reset-palette">Reset to defaults</button>
+            <button id="add-color" class="primary">+ Add color</button>
+          </div>
+        </div>
+        <p class="hint">
+          These colors are available wherever you can pick a color (lights, spritzers, etc.).
+          Changes persist across every project and design. Built-in colors can be edited but not deleted.
+        </p>
+        <div class="palette" id="palette">Loading…</div>
+        <div class="saving" id="palette-status"></div>
+      </section>
+    `;
+    renderPalette(root);
+    (root.querySelector("#add-color") as HTMLElement).addEventListener("click", async () => {
+      const id = `custom-${Date.now().toString(36)}`;
+      const hex = "#ffaaff";
+      palette = [...palette, { id, label: "New color", hex, glow: suggestGlow(hex) }];
+      await savePalette(root);
+      renderPalette(root);
+    });
+    (root.querySelector("#reset-palette") as HTMLElement).addEventListener("click", async () => {
+      if (!confirm("Reset the palette to the factory defaults? Your custom colors will be removed.")) return;
+      palette = DEFAULT_COLORS.map((c) => ({ ...c }));
+      await savePalette(root);
+      renderPalette(root);
+    });
+    return;
+  }
+
+  if (activeTab === "custom") {
+    wrap.innerHTML = `
+      <section class="card">
+        <h2 style="margin:0 0 4px">Custom Defaults</h2>
+        <p class="hint">Starting settings applied when you place a new custom upload.</p>
+        <div id="defaults-sections">Loading…</div>
+        <div class="saving" id="defaults-status"></div>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <h2>Custom Graphic Library</h2>
+          <div class="actions">
+            <button id="library-upload-btn" class="primary">+ Upload image</button>
+          </div>
+        </div>
+        <p class="hint">
+          Your uploaded graphics live here and are available in every design.
+          Removing a graphic from the library doesn't affect copies already placed on designs.
+        </p>
+        <div id="library-grid">Loading…</div>
+        <div class="saving" id="library-status"></div>
+      </section>
+    `;
+    renderDefaults(root);
+    renderLibrary(root);
+    (root.querySelector("#library-upload-btn") as HTMLElement).addEventListener("click", () => {
+      (root.querySelector("#library-upload-input") as HTMLInputElement).click();
+    });
+    return;
+  }
+
+  // Lights / Decor / Text — all share the same shape: just the defaults
+  // sections that belong to this tab.
+  const tabLabel = TABS.find((t) => t.id === activeTab)?.label ?? "";
+  wrap.innerHTML = `
+    <section class="card">
+      <h2 style="margin:0 0 4px">${tabLabel} Defaults</h2>
+      <p class="hint">
+        Starting values applied when you place a new ${tabLabel.toLowerCase()} item.
+        You can still tweak any item after placing it.
+      </p>
+      <div id="defaults-sections">Loading…</div>
+      <div class="saving" id="defaults-status"></div>
+    </section>
+  `;
+  renderDefaults(root);
 }
 
 function renderPalette(root: HTMLElement) {
@@ -373,10 +460,14 @@ function renderLibrary(root: HTMLElement) {
 }
 
 function renderDefaults(root: HTMLElement) {
-  const wrap = root.querySelector("#defaults-sections") as HTMLElement;
-  wrap.innerHTML = SECTIONS.map((sec) => renderSection(sec)).join("");
+  const wrap = root.querySelector("#defaults-sections") as HTMLElement | null;
+  // Palette tab doesn't have a defaults container — bail rather than throw.
+  if (!wrap) return;
+  // Only show sections that belong to the active tab.
+  const visible = SECTIONS.filter((sec) => SECTION_TAB[sec.key] === activeTab);
+  wrap.innerHTML = visible.map((sec) => renderSection(sec)).join("");
 
-  for (const sec of SECTIONS) {
+  for (const sec of visible) {
     const secEl = wrap.querySelector(`[data-section="${sec.key}"]`) as HTMLElement;
     secEl.querySelector(".reset-section")?.addEventListener("click", async () => {
       defaults = { ...defaults, [sec.key]: { ...FACTORY_DEFAULTS[sec.key] } };
