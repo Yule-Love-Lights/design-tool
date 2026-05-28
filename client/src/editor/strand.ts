@@ -22,11 +22,19 @@ export function renderStrand(
 
   if (strand.points.length < 2) return group;
 
-  // Invisible thick line to allow selection / hit-testing. For bistro
-  // strands we also draw a faint visible cord BEHIND the bulbs (further
-  // down) to reinforce the "string-of-lights" look.
+  const isBistro = strand.bulbType === "bistro";
+  const sagFactor = strand.sagFactor ?? DEFAULT_BISTRO_SAG;
+
+  // Invisible thick line for selection / hit-testing. For bistro the bulbs
+  // and cord follow the sagging catenary, so the hit line must follow that
+  // same curve — otherwise clicks land on the straight chord (above the sag)
+  // and only register near the taut ends. For non-bistro the chord IS the path.
+  const hitPoints =
+    isBistro && strand.points.length >= 4
+      ? bistroCurvePoints(strand.points, sagFactor)
+      : strand.points;
   const hit = new Konva.Line({
-    points: strand.points,
+    points: hitPoints,
     stroke: "rgba(0,0,0,0.001)",
     strokeWidth: 1,
     hitStrokeWidth: 28,
@@ -40,9 +48,6 @@ export function renderStrand(
     placeBulb(group, strand, strand.points[0], strand.points[1], pxPerFoot, 0);
     return group;
   }
-
-  const isBistro = strand.bulbType === "bistro";
-  const sagFactor = strand.sagFactor ?? DEFAULT_BISTRO_SAG;
 
   // For bistro, draw the faint dark cord along the catenary curve first so
   // it sits behind the bulbs. Sampled in ~24 segments per chord for smooth
@@ -90,16 +95,13 @@ export function renderStrand(
   return group;
 }
 
-// Builds a Konva.Line that traces the catenary for each chord in the strand
-// and adds it to the group. Drawn BEFORE the bulbs so they sit on top.
-// `sagFactor` is the fraction of the horizontal span that the chord sags
-// at its midpoint.
-function drawBistroCord(group: Konva.Group, points: number[], sagFactor: number) {
-  if (points.length < 4) return;
-  // Sample each chord at this many sub-points for a smooth curve. Konva's
-  // line renderer interpolates linearly between points, so more samples =
-  // smoother visual catenary.
-  const SAMPLES = 24;
+// Samples the catenary curve across every chord segment of the polyline into
+// a single flat [x,y,x,y,...] array. Used for both the visible cord and the
+// invisible hit line so clicking the sagging rope (not just its straight
+// chord) selects the strand.
+export function bistroCurvePoints(points: number[], sagFactor: number): number[] {
+  const SAMPLES = 24; // per segment; Konva interpolates linearly between samples
+  const out: number[] = [];
   for (let i = 0; i < points.length - 2; i += 2) {
     const x1 = points[i];
     const y1 = points[i + 1];
@@ -109,23 +111,29 @@ function drawBistroCord(group: Konva.Group, points: number[], sagFactor: number)
     const dy = y2 - y1;
     if (Math.hypot(dx, dy) === 0) continue;
     const sagPx = Math.abs(dx) * sagFactor;
-    const curvePts: number[] = [];
-    for (let s = 0; s <= SAMPLES; s++) {
+    // Skip the first sample on later segments to avoid duplicating the shared vertex.
+    const startS = out.length === 0 ? 0 : 1;
+    for (let s = startS; s <= SAMPLES; s++) {
       const t = s / SAMPLES;
-      const x = x1 + dx * t;
-      const y = y1 + dy * t + sagPx * 4 * t * (1 - t);
-      curvePts.push(x, y);
+      out.push(x1 + dx * t, y1 + dy * t + sagPx * 4 * t * (1 - t));
     }
-    const cord = new Konva.Line({
-      points: curvePts,
-      stroke: "rgba(20, 20, 20, 0.6)",
-      strokeWidth: 1.2,
-      lineCap: "round",
-      lineJoin: "round",
-      listening: false,
-    });
-    group.add(cord);
   }
+  return out;
+}
+
+// Draws the faint dark cord along the catenary. Added BEFORE the bulbs so they
+// sit on top.
+function drawBistroCord(group: Konva.Group, points: number[], sagFactor: number) {
+  if (points.length < 4) return;
+  const cord = new Konva.Line({
+    points: bistroCurvePoints(points, sagFactor),
+    stroke: "rgba(20, 20, 20, 0.6)",
+    strokeWidth: 1.2,
+    lineCap: "round",
+    lineJoin: "round",
+    listening: false,
+  });
+  group.add(cord);
 }
 
 function placeBulb(

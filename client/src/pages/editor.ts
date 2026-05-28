@@ -101,17 +101,22 @@ const BOW_SIZES = [12, 18, 24, 36, 48];
 const GARLAND_SIZES = [6, 9, 12, 18, 24];
 const SPRITZER_SIZES = [16, 24, 36, 48];
 
-export async function renderEditor(root: HTMLElement, designId: string) {
+export async function renderEditor(
+  root: HTMLElement,
+  designId: string,
+  opts: { embedded?: boolean; onBack?: () => void } = {},
+): Promise<() => void> {
   let design: Design;
   try {
     design = await api.getDesign(designId);
   } catch {
-    window.location.hash = "#/";
-    return;
+    if (!opts.embedded) window.location.hash = "#/";
+    else root.innerHTML = `<div class="project-empty">Couldn't load this design.</div>`;
+    return () => {};
   }
 
   root.innerHTML = `
-    <div class="editor">
+    <div class="editor${opts.embedded ? " embedded" : ""}">
       <div class="topbar">
         <button class="icon" id="back" title="Back">←</button>
         <input class="title" id="name" />
@@ -3089,7 +3094,8 @@ export async function renderEditor(root: HTMLElement, designId: string) {
 
   // --- Topbar ---
   (root.querySelector("#back") as HTMLElement).addEventListener("click", () => {
-    window.location.hash = "#/";
+    if (opts.onBack) opts.onBack();
+    else window.location.hash = "#/";
   });
   (root.querySelector("#undo-btn") as HTMLElement).addEventListener("click", undo);
   (root.querySelector("#redo-btn") as HTMLElement).addEventListener("click", redo);
@@ -3170,22 +3176,39 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     { passive: false },
   );
 
-  // Space + drag to pan
+  // Space + drag to pan. Named handlers so they can be removed in destroy()
+  // — critical when the editor is embedded in the project page and torn
+  // down/remounted on every design-tab switch (anonymous listeners would
+  // stack and fire multiple times).
   let spaceDown = false;
   let panDragStart: { x: number; y: number; baseX: number; baseY: number } | null = null;
-  window.addEventListener("keydown", (e) => {
+  const onWindowKeyDownPan = (e: KeyboardEvent) => {
     if (e.code === "Space" && !spaceDown && document.activeElement?.tagName !== "INPUT") {
       spaceDown = true;
       stage.container().style.cursor = "grab";
       e.preventDefault();
     }
-  });
-  window.addEventListener("keyup", (e) => {
+  };
+  const onWindowKeyUpPan = (e: KeyboardEvent) => {
     if (e.code === "Space") {
       spaceDown = false;
       stage.container().style.cursor = "";
     }
-  });
+  };
+  const onWindowMouseMovePan = (e: MouseEvent) => {
+    if (!panDragStart) return;
+    panOffset.x = panDragStart.baseX + (e.clientX - panDragStart.x);
+    panOffset.y = panDragStart.baseY + (e.clientY - panDragStart.y);
+    applyTransform();
+  };
+  const onWindowMouseUpPan = () => {
+    if (panDragStart) {
+      panDragStart = null;
+      stage.container().style.cursor = spaceDown ? "grab" : "";
+    }
+  };
+  window.addEventListener("keydown", onWindowKeyDownPan);
+  window.addEventListener("keyup", onWindowKeyUpPan);
   stage.on("mousedown", (e) => {
     // Middle-mouse-button OR space+left-button → pan
     if (e.evt.button === 1 || (spaceDown && e.evt.button === 0)) {
@@ -3199,18 +3222,8 @@ export async function renderEditor(root: HTMLElement, designId: string) {
       e.evt.preventDefault();
     }
   });
-  window.addEventListener("mousemove", (e) => {
-    if (!panDragStart) return;
-    panOffset.x = panDragStart.baseX + (e.clientX - panDragStart.x);
-    panOffset.y = panDragStart.baseY + (e.clientY - panDragStart.y);
-    applyTransform();
-  });
-  window.addEventListener("mouseup", () => {
-    if (panDragStart) {
-      panDragStart = null;
-      stage.container().style.cursor = spaceDown ? "grab" : "";
-    }
-  });
+  window.addEventListener("mousemove", onWindowMouseMovePan);
+  window.addEventListener("mouseup", onWindowMouseUpPan);
 
   // --- Brightness slider ---
   const brightnessEl = root.querySelector("#brightness") as HTMLInputElement;
@@ -3887,12 +3900,30 @@ export async function renderEditor(root: HTMLElement, designId: string) {
   });
   ro.observe(stageWrap);
 
-  // --- Cleanup on navigation away ---
-  const onHash = () => {
+  // --- Teardown ---
+  // Standalone (#/editor/:id): self-destroys on hashchange, same as before.
+  // Embedded (project page): the caller owns lifecycle and calls the returned
+  // destroy() on tab switch / navigate-away. Every window listener, the
+  // ResizeObserver, the save timer, and the Konva stage are released so
+  // repeatedly mounting the editor (one mount per design tab) doesn't leak.
+  let destroyed = false;
+  function destroy() {
+    if (destroyed) return;
+    destroyed = true;
     window.removeEventListener("keydown", keyHandler);
     window.removeEventListener("hashchange", onHash);
+    window.removeEventListener("keydown", onWindowKeyDownPan);
+    window.removeEventListener("keyup", onWindowKeyUpPan);
+    window.removeEventListener("mousemove", onWindowMouseMovePan);
+    window.removeEventListener("mouseup", onWindowMouseUpPan);
     ro.disconnect();
-  };
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    if (redrawHandle) { cancelAnimationFrame(redrawHandle); redrawHandle = 0; }
+    try { stage.destroy(); } catch { /* already gone */ }
+  }
+  function onHash() {
+    if (!opts.embedded) destroy();
+  }
   window.addEventListener("hashchange", onHash);
 
   // Re-apply the saved defaults for whatever item type is currently active.
@@ -4005,6 +4036,8 @@ export async function renderEditor(root: HTMLElement, designId: string) {
     await loadPhoto(design.photoUrl, design.photoW, design.photoH);
   }
   redrawScene();
+
+  return destroy;
 }
 
 function loadHTMLImage(url: string): Promise<HTMLImageElement> {

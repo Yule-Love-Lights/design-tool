@@ -38,6 +38,7 @@ function normalizeScene(raw: string): {
 function toDesign(row: DesignRow) {
   return {
     id: row.id,
+    projectId: row.project_id,
     name: row.name,
     photoUrl: row.photo_path ? `/photos/${row.photo_path}` : null,
     photoW: row.photo_w,
@@ -49,17 +50,20 @@ function toDesign(row: DesignRow) {
   };
 }
 
-export async function designRoutes(app: FastifyInstance) {
-  app.get("/api/designs", async () => {
-    const rows = db
-      .prepare(
-        `SELECT id, name, photo_path, photo_w, photo_h, background, scene, created_at, updated_at
-         FROM designs ORDER BY updated_at DESC`,
-      )
-      .all() as DesignRow[];
-    return rows.map(toDesign);
-  });
+// Lightweight design row for the project page's tab strip — no scene blob.
+// Exported for projectRoutes to reuse.
+export function toDesignSummary(row: DesignRow) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    name: row.name,
+    photoUrl: row.photo_path ? `/photos/${row.photo_path}` : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
+export async function designRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/api/designs/:id", async (req, reply) => {
     const row = db
       .prepare(`SELECT * FROM designs WHERE id = ?`)
@@ -71,14 +75,29 @@ export async function designRoutes(app: FastifyInstance) {
     return toDesign(row);
   });
 
-  app.post<{ Body: { name?: string } }>("/api/designs", async (req) => {
+  // Designs are always created inside a project now.
+  app.post<{ Body: { projectId?: string; name?: string } }>("/api/designs", async (req, reply) => {
+    const projectId = req.body?.projectId;
+    if (!projectId) {
+      reply.code(400);
+      return { error: "project_required" };
+    }
+    const project = db.prepare("SELECT client_id FROM projects WHERE id = ?").get(projectId) as
+      | { client_id: string }
+      | undefined;
+    if (!project) {
+      reply.code(404);
+      return { error: "project_not_found" };
+    }
     const id = nanoid(10);
     const now = Date.now();
     const name = (req.body?.name ?? "").trim() || "Untitled Design";
     db.prepare(
-      `INSERT INTO designs (id, name, scene, created_at, updated_at)
-       VALUES (?, ?, '{"yardsticks":[],"items":[]}', ?, ?)`,
-    ).run(id, name, now, now);
+      `INSERT INTO designs (id, project_id, name, scene, created_at, updated_at)
+       VALUES (?, ?, ?, '{"yardsticks":[],"items":[]}', ?, ?)`,
+    ).run(id, projectId, name, now, now);
+    // Touch the client so the dashboard's recent-activity sort reflects this.
+    db.prepare("UPDATE clients SET updated_at = ? WHERE id = ?").run(now, project.client_id);
     return toDesign(
       db.prepare(`SELECT * FROM designs WHERE id = ?`).get(id) as DesignRow,
     );

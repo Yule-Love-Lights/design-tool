@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { mkdirSync, existsSync } from "node:fs";
 import { authRoutes, requireAuth } from "./routes/auth.js";
+import { clientRoutes } from "./routes/clients.js";
+import { projectRoutes } from "./routes/projects.js";
 import { designRoutes } from "./routes/designs.js";
 import { photoRoutes } from "./routes/photos.js";
 import { uploadRoutes } from "./routes/uploads.js";
@@ -51,6 +53,8 @@ await app.register(fastifyStatic, {
 await authRoutes(app, { password: APP_PASSWORD });
 await app.register(async (api) => {
   api.addHook("preHandler", requireAuth);
+  await clientRoutes(api);
+  await projectRoutes(api);
   await designRoutes(api);
   await photoRoutes(api, { photoDir: PHOTO_DIR });
   await uploadRoutes(api, { photoDir: PHOTO_DIR });

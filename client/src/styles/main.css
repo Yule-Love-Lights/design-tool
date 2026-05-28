@@ -502,3 +502,174 @@ select:focus { outline: none; border-color: var(--accent); }
   color: var(--text-dim);
   margin-bottom: 4px;
 }
+.modal input[type="text"],
+.modal input[type="search"] {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+.modal input[type="text"]:focus,
+.modal input[type="search"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.modal .modal-hint {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: -4px 0 2px;
+  line-height: 1.4;
+}
+.modal .err {
+  color: var(--danger);
+  font-size: 12px;
+  min-height: 14px;
+}
+
+/* ----- Clients dashboard ----- */
+.clients {
+  padding: 24px 40px;
+  height: 100vh;
+  overflow: auto;
+}
+.clients header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 20px;
+}
+.clients h1 { margin: 0; font-size: 22px; }
+.clients header > div { display: flex; gap: 8px; }
+.clients-toolbar {
+  display: flex; gap: 10px; align-items: center;
+  margin-bottom: 20px;
+}
+.clients-toolbar #client-search {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+.clients-toolbar #client-search:focus { outline: none; border-color: var(--accent); }
+.clients-toolbar select {
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.empty-note { color: var(--text-dim); padding: 24px 0; }
+
+.client-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+.client-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.client-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.client-name { font-weight: 600; font-size: 16px; }
+.client-contact {
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.client-projects { margin-top: 12px; }
+.no-projects { color: var(--text-dim); font-size: 13px; font-style: italic; }
+.project-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.project-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+.project-link:hover { text-decoration: underline; }
+.project-actions { display: flex; gap: 4px; }
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.link-btn:hover { background: var(--surface-2); color: var(--text); }
+
+/* ----- Project page (embedded editor + design tabs) ----- */
+.project-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.project-bar {
+  flex: 0 0 auto;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+}
+.project-bar .breadcrumb {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.project-bar .breadcrumb a { color: var(--accent); text-decoration: none; }
+.project-bar .breadcrumb a:hover { text-decoration: underline; }
+.project-bar .breadcrumb .sep { margin: 0 6px; opacity: 0.6; }
+.project-bar .breadcrumb .crumb.current { color: var(--text); font-weight: 500; }
+.design-tabs { display: flex; gap: 4px; flex-wrap: wrap; align-items: flex-end; }
+.design-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 14px;
+  border-radius: 6px 6px 0 0;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+}
+.design-tab:hover { background: var(--border); color: var(--text); }
+.design-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.design-tab.new { color: var(--accent); font-weight: 600; padding: 6px 14px; }
+.design-tab .tab-del {
+  opacity: 0.55;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 3px;
+  border-radius: 3px;
+}
+.design-tab .tab-del:hover { opacity: 1; background: rgba(0, 0, 0, 0.3); }
+.editor-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+.project-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%;
+  color: var(--text-dim);
+}
+
+/* Editor fills its host instead of the full viewport when embedded. */
+.editor.embedded { height: 100%; }

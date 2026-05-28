@@ -173,6 +173,7 @@ export type Scene = {
 
 export type Design = {
   id: string;
+  projectId: string;
   name: string;
   photoUrl: string | null;
   photoW: number | null;
@@ -181,6 +182,43 @@ export type Design = {
   scene: Scene;
   createdAt: number;
   updatedAt: number;
+};
+
+// Lightweight design row for the project page's tab strip (no scene blob).
+export type DesignSummary = {
+  id: string;
+  projectId: string;
+  name: string;
+  photoUrl: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+// ----- Clients → Projects → Designs hierarchy -----
+export type Project = {
+  id: string;
+  clientId: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type Client = {
+  id: string;
+  name: string;
+  email: string | null;
+  address: string | null;
+  phone: string | null;
+  createdAt: number;
+  updatedAt: number;
+  projects: Project[]; // nested for the dashboard
+};
+
+// Project page payload: the project + its client (breadcrumb) + design tabs.
+export type ProjectView = {
+  project: Project;
+  client: { id: string; name: string; email: string | null; address: string | null; phone: string | null } | null;
+  designs: DesignSummary[];
 };
 
 // ----- Color palette (editable, persisted server-side) -----
@@ -236,16 +274,43 @@ export const api = {
   async logout() {
     await fetch("/api/logout", { method: "POST", credentials: "include" });
   },
-  async listDesigns() {
-    return req<Design[]>("/api/designs");
+  // ----- Clients -----
+  async listClients() {
+    return req<Client[]>("/api/clients");
   },
+  async createClient(input: { name: string; email?: string; address?: string; phone?: string }) {
+    return req<Client>("/api/clients", { method: "POST", body: JSON.stringify(input) });
+  },
+  async updateClient(
+    id: string,
+    patch: Partial<{ name: string; email: string | null; address: string | null; phone: string | null }>,
+  ) {
+    return req<Client>(`/api/clients/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+  },
+  async deleteClient(id: string) {
+    return req<{ ok: true }>(`/api/clients/${id}`, { method: "DELETE" });
+  },
+  // ----- Projects -----
+  async getProject(id: string) {
+    return req<ProjectView>(`/api/projects/${id}`);
+  },
+  async createProject(clientId: string, name: string) {
+    return req<Project>("/api/projects", { method: "POST", body: JSON.stringify({ clientId, name }) });
+  },
+  async updateProject(id: string, name: string) {
+    return req<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify({ name }) });
+  },
+  async deleteProject(id: string) {
+    return req<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" });
+  },
+  // ----- Designs -----
   async getDesign(id: string) {
     return req<Design>(`/api/designs/${id}`);
   },
-  async createDesign(name: string) {
+  async createDesign(projectId: string, name: string) {
     return req<Design>("/api/designs", {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ projectId, name }),
     });
   },
   async updateDesign(
