@@ -41,10 +41,11 @@ Picked up from Session 1's commit. Shipped (each its own commit on `main`):
 - **Bistro lights** (4th bulb type; catenary sag with per-strand slider; faint cord; Edison bulbs) + **Poles** (new top-level category; cube/barrel/no base; top-anchor height resize).
 - **Ctrl+C / Ctrl+V** copy-paste; "Select All [Type]" in every edit panel; bigger wreaths; several bug-fix rounds (Vite watcher ignore for `.pdnSave`, bistro curve hit-testing, etc.).
 - **BIG: Clients → Projects → Designs refactor** — replaced the flat dashboard with the HHC 3-level hierarchy; new `clients`/`projects` tables + `designs.project_id`; embedded-editor project page with design tabs (Option B); editor made mountable/teardownable. Old test designs discarded.
-- **GitHub setup** — created org `Yule-Love-Lights`, transferred the Quote Tool repo in, created + pushed this repo (`design-tool`). Rewrote the README (shipped via PR #1 → now merged; remote `main` = `c6e22c8`).
-- Recorded the **AI Quote Tool** ([[project-ai-quote-tool]]) as the future integration target.
-- **Ended ~85%+ context** (wrapping up to start Session 3).
-- **NEXT (Session 3 starting point):** AI Quote Tool integration is the queued next feature — first cut is a `surface` tag on `StrandItem` + a `GET /api/designs/:id/export` endpoint. NOT started; awaiting Jason's go. Alternatively: deployment to a VPS, or polish items (design thumbnails on tabs, duplicate-whole-design, per-item yardstick binding).
+- **GitHub setup** — created org `Yule-Love-Lights`, transferred the quote tool repo in (`yll-quote-tool`), created + pushed this repo (`design-tool`). Rewrote the README. Auth gotcha: GitHub rejects account-password auth — Jason had to use GCM browser sign-in; first push hit "fetch first" because the repo was created with a README (force-pushed our history over it). **I (Claude) cannot push — Jason pushes.**
+- **Memory snapshot into repo** — mirrored the `~/.claude/.../memory/*.md` files into the repo at `docs/context/` + a README, so context travels with the repo (backup + onboarding for Naldo). Re-snapshot on every wrap-up (see checklist above).
+- Recorded the **AI Quote Tool** ([[project-ai-quote-tool]]) as the future integration target; produced a thorough handoff prompt (via a Workflow) for Naldo's assistant to onboard Jason onto the `yll-quote-tool` repo (snapshot its memory, write ONBOARDING/CURRENT_STATE/CONVENTIONS docs, share secrets out-of-band).
+- **Ended ~90% context — final wrap of Session 2.** All work committed + pushed; memory + docs/context current.
+- **NEXT (Session 3 starting point):** AI Quote Tool integration is the queued next feature — first cut is a `surface` tag on `StrandItem` + a `GET /api/designs/:id/export` endpoint. NOT started; awaiting Jason's go. Alternatives: deploy to a VPS (still localhost-only), or polish (design thumbnails on tabs, duplicate-whole-design, per-item yardstick binding). NOTE: Jason may instead spend Session 3 onboarding onto the quote tool — he was setting that up at the end of Session 2.
 
 ---
 
