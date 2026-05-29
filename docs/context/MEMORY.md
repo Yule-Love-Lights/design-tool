@@ -1,0 +1,7 @@
+- [User profile](user_profile.md) — Jason at Yule Love Lights (yulelovelights.com), Christmas + permanent lights installer
+- [Quote tool project](project_quote_tool.md) — Building an internal HHC clone for designing/quoting light installations
+- [Session log](session_log.md) — Per-session continuity log: session count, what each shipped, where to pick up next
+- [HHC reference](reference_hhc.md) — Existing tool we're cloning: new.holidayhomeconcepts.com/dash/
+- [HHC architecture notes](project_hhc_architecture.md) — Tech/data model observed from inspecting the live HHC app
+- [AI Quote Tool](project_ai_quote_tool.md) — Jason's OTHER project (Next.js + Supabase + Claude Vision + Gemini). Future integration target for this design tool.
+- [Context-window warning](feedback_context_warning.md) — Warn Jason at ~90% context so we can land a clean stopping point
