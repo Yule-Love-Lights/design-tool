@@ -4,8 +4,13 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://localhost:3000",
-      "/photos": "http://localhost:3000",
+      // Use 127.0.0.1 (IPv4) explicitly, NOT "localhost". On Windows, localhost
+      // resolves to IPv6 ::1 first, and if the yll-quote-tool Next.js dev server
+      // is also running on port 3000 (it binds :::3000 over IPv6) the proxy would
+      // hit THAT instead of our Fastify (which binds 0.0.0.0:3000 over IPv4),
+      // returning 404s and a blank app. Pinning to 127.0.0.1 avoids the collision.
+      "/api": "http://127.0.0.1:3000",
+      "/photos": "http://127.0.0.1:3000",
     },
     watch: {
       // Ignore editor lock/scratch files. Paint.NET drops `.pdnSave` files
