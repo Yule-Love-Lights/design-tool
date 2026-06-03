@@ -11,4 +11,4 @@ Jason works at **Yule Love Lights** (yulelovelights.com, info@yulelovelights.com
 
 Business: residential + commercial Christmas lights and permanent (year-round) lights installations. Uses HHC ([[reference-hhc]]) today to design installations on top of customer home photos and generate quotes/proposals.
 
-Current goal: replicate HHC as an internal-only quote tool ([[project-quote-tool]]) — no multi-tenant SaaS, no billing, just for Yule Love Lights staff. Wants the same photoreal "glow on the photo" experience (not a simplified diagram tool).
+Current goal: replicate HHC as an internal-only quote tool ([[project-design-tool]]) — no multi-tenant SaaS, no billing, just for Yule Love Lights staff. Wants the same photoreal "glow on the photo" experience (not a simplified diagram tool).

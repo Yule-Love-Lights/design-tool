@@ -1,5 +1,5 @@
 - [User profile](user_profile.md) — Jason at Yule Love Lights (yulelovelights.com), Christmas + permanent lights installer
-- [Quote tool project](project_quote_tool.md) — Building an internal HHC clone for designing/quoting light installations
+- [Design tool project](project_design_tool.md) — THE DESIGN TOOL: internal HHC-clone canvas app for drawing lights on house photos. (Not the AI Quote Tool below.) **Read this first.**
 - [Session log](session_log.md) — Per-session continuity log: session count, what each shipped, where to pick up next
 - [HHC reference](reference_hhc.md) — Existing tool we're cloning: new.holidayhomeconcepts.com/dash/
 - [HHC architecture notes](project_hhc_architecture.md) — Tech/data model observed from inspecting the live HHC app

@@ -1,11 +1,13 @@
 ---
 name: project-ai-quote-tool
-description: "Jason's OTHER project — the AI Quote Tool that generates customer quotes with photo analysis + AI-rendered previews. Future integration target for this design tool ([[project-quote-tool]])."
+description: "Jason's OTHER project — the AI Quote Tool that generates customer quotes with photo analysis + AI-rendered previews. Future integration target for this design tool ([[project-design-tool]])."
 metadata: 
   node_type: memory
   type: project
   originSessionId: f1094160-a945-4c44-9963-e22a7e3a9905
 ---
+
+> **⚠️ Naming note:** This is the **AI QUOTE TOOL** (`yll-quote-tool` — Next.js + Supabase + Claude Vision + Gemini), Jason's **separate** quoting app. It is **NOT** the design/canvas tool, which lives in [[project-design-tool]] (file `project_design_tool.md`).
 
 Separate project Jason runs alongside this design tool. **Not maintained by me** — this is a reference summary of an existing tool he shared, captured so we can plan the integration.
 
@@ -40,7 +42,7 @@ End-to-end customer quoting:
 Convention: routes in `src/app/api/*/route.ts` are 30-line thin wrappers; real logic in `src/lib/`. Library code does the work.
 
 ## Integration goal
-End product = **a quote presented to the customer that includes a picture of their house fully designed**. The design tool ([[project-quote-tool]]) draws the install on the photo; the AI Quote Tool consumes the resulting footage/counts/image to compute price + build the portal.
+End product = **a quote presented to the customer that includes a picture of their house fully designed**. The design tool ([[project-design-tool]]) draws the install on the photo; the AI Quote Tool consumes the resulting footage/counts/image to compute price + build the portal.
 
 ## Recommended integration seam (smallest first cut, ~1 day of work)
 1. Add a `surface` tag to `StrandItem` so each strand is labeled by the quote tool's surface taxonomy (Santa's Roofline, Gingerbread, Winter Wonderland, mini-lights, etc.). Picker in the editor sidebar.
@@ -71,7 +73,7 @@ End product = **a quote presented to the customer that includes a picture of the
 - **Unify DB** — move this tool's `designs.scene` into Supabase as `quotes.scene` jsonb. The Fastify backend collapses into a static file server, or goes away. Bigger refactor.
 
 ## Where this slots in the roadmap
-- **Prerequisite:** the Clients/Projects/Designs refactor on THIS tool (currently next-up in [[project-quote-tool]]). Quote tool keys off HighLevel contacts; this tool needs the same customer mental model so designs can be looked up by client when the quote tool calls in.
+- **Prerequisite:** the Clients/Projects/Designs refactor on THIS tool (currently next-up in [[project-design-tool]]). Quote tool keys off HighLevel contacts; this tool needs the same customer mental model so designs can be looked up by client when the quote tool calls in.
 - **Then:** add `surface` tag + export endpoint here.
 - **Then:** quote tool side reads from `/api/designs/:id/export` and stores the result in `quotes.measurements`.
 

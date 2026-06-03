@@ -1,11 +1,13 @@
 ---
-name: project-quote-tool
+name: project-design-tool
 description: "Yule Love Lights' internal light-design tool — upload house photo, draw glowing lights over it, download the image"
 metadata: 
   node_type: memory
   type: project
   originSessionId: f873dbf4-c7e5-42d7-9853-231824d98139
 ---
+
+> **⚠️ Naming note (2026-06-02):** This file — previously `project_quote_tool.md`, now **`project_design_tool.md`** — is the **DESIGN TOOL**: the internal canvas app for drawing glowing lights on customer house photos and downloading the image. It is **NOT** the separate AI Quote Tool (the Next.js + Supabase quoting app, `yll-quote-tool`), which lives in [[project-ai-quote-tool]]. The old "quote_tool" name was a legacy artifact from the earliest sessions.
 
 Building an internal-only design tool for Yule Love Lights ([[user-profile]]). Inspired by HHC ([[reference-hhc]]) but **much smaller in scope** — see clarifications below.
 
@@ -245,6 +247,7 @@ Bistro is a 4th `BulbType` (`"bistro"`) — lives under Lights → Bulb Type, re
 - Wreaths/bows don't have a yardstick-specific binding yet (they always use the active/first yardstick). Same pattern as strands → small follow-up.
 - Production hosting (currently dev-only on localhost). Jason wants to move to a small VPS eventually (~4–8 staff users); plan to do it after the new-item-types push is done.
 - Duplicate design (not duplicate strand — duplicate the whole design including photo).
+- **Animated export (LOW PRIORITY — not soon; noted 2026-06-02):** ability to download a **GIF or MP4** of the design that plays an animation of the lights on the house (e.g. twinkle / chase / fade). Aspirational, explicitly not scheduled — Jason just wants it on the list. Likely approach when we get to it: drive the Konva bulb opacities/glow over a timeline and capture frames (stage.toCanvas per frame → encode to GIF/MP4), exported at the photo's native resolution like the existing JPG download.
 
 ## Not yet built (Jason's roadmap — items first, then project org)
 **Items still queued (in his preferred order):**

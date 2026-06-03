@@ -9,7 +9,7 @@ metadata:
 
 Notes captured 2026-05-25 from live inspection of https://new.holidayhomeconcepts.com. See [[reference-hhc]] for URLs.
 
-**Why:** We are cloning this app ([[project-quote-tool]]); this is the source-of-truth model.
+**Why:** We are cloning this app ([[project-design-tool]]); this is the source-of-truth model.
 
 **How to apply:** Treat these as the target spec unless Jason tells you otherwise.
 

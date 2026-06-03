@@ -9,7 +9,7 @@ metadata:
 
 When the chat's context window approaches ~90% full, give Jason an explicit heads-up so he can decide whether to wrap the current chunk and start a fresh session.
 
-**Why:** Long sessions on this project ([[project-quote-tool]]) routinely hit the limit. The last session ended at ~95% with work still in flight; better to flag early and land a clean stopping point than to get auto-compressed mid-task.
+**Why:** Long sessions on this project ([[project-design-tool]]) routinely hit the limit. The last session ended at ~95% with work still in flight; better to flag early and land a clean stopping point than to get auto-compressed mid-task.
 
 **How to apply:** I don't have a precise token counter, so estimate from conversation length, cumulative tool-output volume, and how many turns deep we are. When it feels close to 90%, surface a one-line warning ("Heads up — we're roughly at 90% context, want me to commit current work and we pick up in a new session?") rather than silently continuing. Better to warn slightly early than to miss it.
 

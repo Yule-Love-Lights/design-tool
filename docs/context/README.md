@@ -23,11 +23,11 @@ between snapshots. The snapshot is refreshed manually (see "Keeping in sync" bel
 ## Start here
 
 `MEMORY.md` is the index — it lists the other files and what each covers:
-- `project_quote_tool.md` — main state file: current features, how to run, git/GitHub workflow, roadmap. **Read this first.**
+- `project_design_tool.md` — main state file for **the DESIGN TOOL** (the canvas app for drawing lights on house photos): current features, how to run, git/GitHub workflow, roadmap. **Read this first.** (Formerly named `project_quote_tool.md` — renamed 2026-06-02 to avoid confusion with the AI Quote Tool.)
 - `session_log.md` — per-session continuity log (what each session shipped, where to pick up).
 - `user_profile.md` — who Jason / Yule Love Lights are.
 - `reference_hhc.md` + `project_hhc_architecture.md` — the Holiday Home Concepts tool this is modeled on.
-- `project_ai_quote_tool.md` — the separate Quote Tool and the planned integration.
+- `project_ai_quote_tool.md` — the **separate AI Quote Tool** (`yll-quote-tool`, Next.js + Supabase) and the planned integration. NOT the design tool above.
 - `feedback_context_warning.md` — context-management preference.
 
 ## For a new teammate (e.g. Naldo) picking up the design tool

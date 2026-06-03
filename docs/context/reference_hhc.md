@@ -7,7 +7,7 @@ metadata:
   originSessionId: f873dbf4-c7e5-42d7-9853-231824d98139
 ---
 
-**Holiday Home Concepts (HHC)** — https://new.holidayhomeconcepts.com/dash/ — is the production SaaS tool Jason uses today for designing Christmas light installations on customer home photos. We are building an internal clone of it ([[project-quote-tool]]).
+**Holiday Home Concepts (HHC)** — https://new.holidayhomeconcepts.com/dash/ — is the production SaaS tool Jason uses today for designing Christmas light installations on customer home photos. We are building an internal clone of it ([[project-design-tool]]).
 
 Useful URLs (require login):
 - Dashboard: `/dash/`

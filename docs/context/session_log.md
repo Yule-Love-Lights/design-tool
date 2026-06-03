@@ -7,13 +7,13 @@ metadata:
   originSessionId: 38f3b6af-3f9e-4899-b41f-ce5c5ade0676
 ---
 
-Running log of work sessions on the design tool ([[project-quote-tool]]). The Claude Code project runs out of context after a long session, so work spans multiple fresh sessions. This file is the continuity thread between them.
+Running log of work sessions on the design tool ([[project-design-tool]]). The Claude Code project runs out of context after a long session, so work spans multiple fresh sessions. This file is the continuity thread between them.
 
 **How to use this file:**
 - **At the START of a session:** skim the latest entry to see exactly where the previous session left off and what's next.
 - **When WRAPPING UP** (always before context fills — Jason wants a ~90% warning per [[feedback-context-warning]], and his window is **Opus 4.7 1M**, so "long" is many turns):
   1. Bump the session count + add/finish the current session's entry (what shipped, ending state, next step).
-  2. Make sure [[project-quote-tool]] "Current state" + "Next up" are accurate.
+  2. Make sure [[project-design-tool]] "Current state" + "Next up" are accurate.
   3. **Re-snapshot memory into the repo:** copy `~/.claude/projects/C--Users-Jason-Desktop-YuleLoveLights-Claude/memory/*.md` → `<repo>/docs/context/`, then tell Jason to commit + push (so Naldo / backups stay current).
   Then a fresh session can pick up cold.
 
