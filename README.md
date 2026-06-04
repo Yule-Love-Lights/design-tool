@@ -82,6 +82,14 @@ a renderer — no DB migration.
 
 ## Development
 
+**Quick start (Windows):** double-click **`start-design-tool.bat`** in the repo root
+(or the **Start Design Tool** shortcut on the Desktop). It puts Node on PATH, sets the
+dev env vars (login password `lights`), runs `npm run dev`, and auto-opens
+http://localhost:5173 after a few seconds. Keep the console window open while you work;
+close it to stop the servers. Run `npm install` once first if you haven't already.
+
+To run it manually instead:
+
 ```powershell
 # Node 22+ required (uses the built-in node:sqlite module)
 $env:Path = "$env:ProgramFiles\nodejs;$env:Path"
