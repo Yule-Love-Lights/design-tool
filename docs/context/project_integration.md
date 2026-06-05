@@ -103,6 +103,30 @@ Quote tool runs locally (Next.js dev) at **localhost:3000** — NOTE this is the
 - Whether to store **only the render** or **render + editable scene** against the quote (almost certainly both — scene for editing, render for display/sending).
 - Migration of this tool's editor into Next.js (build tooling, Konva in React, teardown/mount).
 
+## Resolved design decisions (Session 3, cross-assistant)
+These were nailed down in a relayed design conversation between THIS tool's assistant and the **quote tool's assistant** (Jason ferried messages between the two sessions). They sharpen the data contract enough to spec it once. Mirror this section into the quote tool's copy of the integration plan.
+
+1. **Pricing-unit split (definitive — from the quote tool's pricing engine):** the **roofline (Santa's/Gingerbread) is priced PER FOOT** (measured footage × a difficulty rate, ~$8/$10/$12). **Everything else is per-unit** (mini-lights per string, wreaths/spritzers/garland/bushes/etc. per item).
+2. **Two projection rules (not one):**
+   - **Per-unit items → projection-from-scene.** A line item = group the tagged scene instances → count → price from a price book keyed by type. Scene is master; geometry/scale is irrelevant to their price. (The "design is visual-only / measurements come from the quote" tension fully dissolves for these.)
+   - **Roofline → projection-from-measurement.** Price = `santasFootage` / `gingerbreadFootage` × rate, owned by the **measurement**, NOT the scene's pixels. The **scene owns only the visual + the toggle binding** (front segments vs sides+ridge segments). Both are **co-derived from the same vision pass → born consistent.** A staff *visual* tweak to the roofline intentionally does **not** reprice; to change the price you edit the *measurement* (the quote tool already supports manual measurement input). This is by design, not drift.
+3. **Canonical item list = projection-from-scene (THE keystone).** The scene is the master list of *what items exist*; the quote owns a **price book** keyed by item-type/tag; line items are a **derived projection** (group → count → price); **portal selection = `included` flags on scene items.** This kills the bidirectional-sync drift risk. "Quote exists before a design" is resolved by **always creating a scene up front** (the same analysis that produces the quote tool's detections produces the scene). NOTE: this is a real **inversion of the quote tool's core** (today its line items come from AI measurement → pricing engine with no scene) → **scope it as core work, not glue.** BUT the inversion only applies to the **discrete per-unit items**; the **roofline keeps the existing measurement → pricing flow untouched** (it just gains a scene-segment visual binding), so the scary part doesn't get re-plumbed.
+4. **Cardinality = sets.** A line item maps to a **set** of scene items. Discrete items = 1-element sets (per-instance: 3 bushes = 3 separate $35 lines = 3 strands). The **roofline = 1 line item ↔ many tagged segments.** Quantity = count of tagged instances (3→2 bushes removes one specific tagged strand).
+5. **Roofline = a single tier enum (`none | santas | gingerbread`), NOT two independent toggles.** Gingerbread is a **superset** of Santa's (front + sides + ridge), so "Gingerbread on / Santa's off" and "both on" are invalid. A tier enum enforces mutual-exclusivity + the superset relationship at the data level even though the portal *renders* two rows. Discrete items stay independent `included` flags.
+6. **Phase-4 tag alignment (already shipped on the quote side — the big unlock).** The quote tool's AI already classifies **front gutter = Santa's, sides + ridge = Gingerbread**, and its engine already splits `santasFootage` (front) vs `gingerbreadFootage` (ridge+sides) — the exact front/sides tag split the design's roofline segments would carry. So the roofline binding ≈ **associating their existing footage split with our segment tags** — minimal new modeling, and the hardest-priced item is the most-aligned.
+7. **Headless renderer deferred (maybe-never).** Capture the live browser canvas (`stage.toDataURL()` → **Supabase Storage**) at save/approve time covers the emailed quote, CRM thumbnails, and the approval snapshot. The quote tool already has a Storage bucket + approval-snapshot mechanism it slots into. A *true* server-side rasterizer is only needed for a fully unattended (no-browser) pipeline — i.e. the Phase-4 auto-design.
+8. **Bake the linkage + `included` fields into the Phase-1 Supabase schema** even though the portal (Phase 2) is what uses them — so Phase 2 isn't a migration.
+9. **Freeze/retire the standalone design tool once ported.** After the React port, the in-quote-tool version is canonical; don't dual-maintain two editors.
+10. **Port reality.** The per-item Konva renderers (`client/src/editor/*.ts`) are framework-agnostic and portable; **`editor.ts` is the real port work** (window listeners, undo/redo, Transformer, marquee, copy-paste, autosave, ResizeObserver). The existing `renderEditor(root, id, {embedded, onBack}) → destroy()` mount/teardown seam is the React lifecycle hook.
+
+### Agreed sequencing (both assistants)
+1. **Spec the data-contract doc FIRST (on paper, the keystone):** Supabase scene storage against a quote + the exact line-item⇄scene-item ID/tag scheme (incl. roofline segment tags + the tier enum + the price-book + the two projection rules).
+2. **Phase 1 — manual editor in the quote builder:** port the Konva editor into Next.js as a React component, scenes in Supabase, no AI, no portal. De-risks the port; immediately useful.
+3. **Phase 2 — portal live-design + toggle→scene filter:** the static AI render dies here; the linkage pays off.
+4. **Phase 3/4 — AI auto-design last** (the fuzzy part; builds on 1–3).
+
+**Next artifact to write:** the data-contract doc (see step 1). Not started.
+
 ## More to come
 Jason flagged this is a baseline, not the full spec — "more ideas will pop up as we develop." Portal-side details beyond the above may expand. Append here as they do.
 
