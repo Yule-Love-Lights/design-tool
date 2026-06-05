@@ -28,6 +28,7 @@ between snapshots. The snapshot is refreshed manually (see "Keeping in sync" bel
 - `user_profile.md` — who Jason / Yule Love Lights are.
 - `reference_hhc.md` + `project_hhc_architecture.md` — the Holiday Home Concepts tool this is modeled on.
 - `project_ai_quote_tool.md` — the **separate AI Quote Tool** (`yll-quote-tool`, Next.js + Supabase) and the planned integration. NOT the design tool above.
+- `project_integration.md` — the plan to merge the design tool INTO the quote tool (Path B): embedded editor on the quote builder + live design in the customer portal. Planning only, not started.
 - `feedback_context_warning.md` — context-management preference.
 
 ## For a new teammate (e.g. Naldo) picking up the design tool
