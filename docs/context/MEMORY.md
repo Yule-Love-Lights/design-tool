@@ -5,4 +5,5 @@
 - [HHC architecture notes](project_hhc_architecture.md) — Tech/data model observed from inspecting the live HHC app
 - [AI Quote Tool](project_ai_quote_tool.md) — Jason's OTHER project (Next.js + Supabase + Claude Vision + Gemini). Future integration target for this design tool.
 - [Integration plan](project_integration.md) — Plan to merge the design tool INTO the quote tool (Path B): embedded editor on the quote builder + live design in the customer portal. Planning only, not started.
+- [Integration data contract](project_integration_data_contract.md) — LOCKED build-ready spec (v0.2) for the line-item ⇄ scene-item linkage. Authored on the quote-tool side; mirrored here verbatim.
 - [Context-window warning](feedback_context_warning.md) — Warn Jason at ~90% context so we can land a clean stopping point

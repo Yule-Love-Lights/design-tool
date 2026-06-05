@@ -125,7 +125,7 @@ These were nailed down in a relayed design conversation between THIS tool's assi
 3. **Phase 2 — portal live-design + toggle→scene filter:** the static AI render dies here; the linkage pays off.
 4. **Phase 3/4 — AI auto-design last** (the fuzzy part; builds on 1–3).
 
-**Next artifact to write:** the data-contract doc (see step 1). Not started.
+**Next artifact:** the data-contract doc — **DONE / LOCKED (v0.2, build-ready)**, see [[project-integration-data-contract]] (`project_integration_data_contract.md`). Authored on the quote-tool side, mirrored here verbatim. Spec only — no implementation until Jason says go.
 
 ## More to come
 Jason flagged this is a baseline, not the full spec — "more ideas will pop up as we develop." Portal-side details beyond the above may expand. Append here as they do.
