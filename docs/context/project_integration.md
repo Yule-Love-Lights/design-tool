@@ -127,6 +127,18 @@ These were nailed down in a relayed design conversation between THIS tool's assi
 
 **Next artifact:** the data-contract doc — **DONE / LOCKED (v0.2, build-ready)**, see [[project-integration-data-contract]] (`project_integration_data_contract.md`). Authored on the quote-tool side, mirrored here verbatim. Spec only — no implementation until Jason says go.
 
+## Design-side vendoring notes (for the quote-tool Phase 1 port)
+When the quote tool ports the editor (Path B), it **vendors** (= copies into its own repo) the design tool's TypeScript type definitions rather than depending on this tool's server. Facts the design side confirmed (Session 3):
+- **Canonical source = `client/src/api.ts`.** Holds all shared types (`Yardstick`, `BulbType`, `DrawingStyle`, `ItemBase`, the 8 item variants, the `SceneItem` union, `Scene`, `Design`, `BulbColor`, `ToolDefaults`) + the `isStrand/isWreath/…` guards. **Vendor the type defs + guards; DROP the `api`/`req` fetch client** (those hit the Fastify REST endpoints, which go away under Path B). Types are pure TS, zero runtime deps.
+- **Vendor ONCE, not a sync target.** The standalone editor freezes post-port (decision #9). The tool is feature-complete on items; no independent editor roadmap changes the Scene shape. The only shape changes coming are the contract §4 binding fields (authored quote-side).
+- **Base-shape facts to honor in the Supabase jsonb:**
+  - `points` = flat `number[]` `[x0,y0,x1,y1,…]` (strand + garland), NOT `[{x,y}]`.
+  - Coords are in **photo-pixel space**; the design row carries `photo_w`/`photo_h`; real-world sizing via the bound yardstick's px-per-foot.
+  - Colors stored as **IDs, not hex** — `colorPattern: string[]` (strand/spritzer) + `colorId` (text/wreath), resolved via the `BulbColor` palette.
+  - `ItemBase.yardstickId` is `string | null`.
+  - Back-compat defaults: `WreathItem.withBow` missing ⇒ `true`; `GarlandItem.sizeIn` missing ⇒ ~9.6″; `WreathItem.colorId` is legacy/unused.
+  - Greenfield Supabase: start with `items[]`; skip the legacy `{strands:[]}` shape (a Fastify-side migration, irrelevant to the quote tool).
+
 ## More to come
 Jason flagged this is a baseline, not the full spec — "more ideas will pop up as we develop." Portal-side details beyond the above may expand. Append here as they do.
 
