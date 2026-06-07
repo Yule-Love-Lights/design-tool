@@ -28,9 +28,10 @@ export function createSpritzer(
   const colors = item.colorPattern.length > 0 ? item.colorPattern : ["warm-white"];
   const isMulti = colors.length > 1;
 
-  // Ray density scales with the RENDERED radius (not sizeIn), so angular
-  // spacing stays constant at every size — small spritzers don't over-pack
-  // into a dense blob. Clamped 7..36. (0.45 keeps a 24" spritzer at ~22 rays.)
+  // Ray density scales with the RENDERED radius (not sizeIn) so the angular
+  // spacing between ray tips stays constant at every size; small spritzers get
+  // proportionally fewer rays instead of collapsing into a blob. Clamped 7..36.
+  // (0.45 keeps a 24" spritzer at ~22 rays.)
   const numRays = Math.max(7, Math.min(36, Math.round(radiusPx * 0.45)));
   const rng = makeRng(item.id);
 
