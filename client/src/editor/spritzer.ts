@@ -14,7 +14,7 @@ export function createSpritzer(
   pxPerFoot: number,
 ): Konva.Group {
   const diameterFt = item.sizeIn / 12;
-  const radiusPx = Math.max(20, (diameterFt * pxPerFoot) / 2);
+  const radiusPx = Math.max(2, (diameterFt * pxPerFoot) / 2);
 
   const group = new Konva.Group({
     id: item.id,
@@ -28,10 +28,10 @@ export function createSpritzer(
   const colors = item.colorPattern.length > 0 ? item.colorPattern : ["warm-white"];
   const isMulti = colors.length > 1;
 
-  // Ray density scales gently with size; deliberately sparser than a
-  // firework so individual tip dots read as distinct lights, not a wall.
-  // 16" → ~18 rays, 24" → ~22, 36" → ~28, 48" → ~34.
-  const numRays = Math.round(10 + item.sizeIn / 2);
+  // Ray density scales with the RENDERED radius (not sizeIn), so angular
+  // spacing stays constant at every size — small spritzers don't over-pack
+  // into a dense blob. Clamped 7..36. (0.45 keeps a 24" spritzer at ~22 rays.)
+  const numRays = Math.max(7, Math.min(36, Math.round(radiusPx * 0.45)));
   const rng = makeRng(item.id);
 
   // ----- Soft outer halo -----
