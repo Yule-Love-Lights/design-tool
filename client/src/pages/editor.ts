@@ -3891,14 +3891,19 @@ export async function renderEditor(
   window.addEventListener("keydown", keyHandler);
 
   // --- Resize ---
-  const ro = new ResizeObserver(() => {
+  function refit() {
     if (bgImageNode) fitStage(bgImageNode.width(), bgImageNode.height());
     else stage.size({ width: stageWrap.clientWidth, height: stageWrap.clientHeight });
     drawLayer.batchDraw();
     bgLayer.batchDraw();
     tintLayer.batchDraw();
-  });
+  }
+  const ro = new ResizeObserver(refit);
   ro.observe(stageWrap);
+  // Some embed hosts (e.g. the quote tool's React shell full-screen toggle)
+  // resize the editor without delivering ResizeObserver notifications, so also
+  // refit on window resize. Removed in destroy().
+  window.addEventListener("resize", refit);
 
   // --- Teardown ---
   // Standalone (#/editor/:id): self-destroys on hashchange, same as before.
@@ -3917,6 +3922,7 @@ export async function renderEditor(
     window.removeEventListener("mousemove", onWindowMouseMovePan);
     window.removeEventListener("mouseup", onWindowMouseUpPan);
     ro.disconnect();
+    window.removeEventListener("resize", refit);
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
     if (redrawHandle) { cancelAnimationFrame(redrawHandle); redrawHandle = 0; }
     try { stage.destroy(); } catch { /* already gone */ }
