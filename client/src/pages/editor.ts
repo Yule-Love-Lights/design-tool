@@ -1,5 +1,5 @@
 import Konva from "konva";
-import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, isText, isCustom, isPole, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type TextItem, type CustomItem, type CustomUpload, type PoleItem, type Yardstick, type BulbType, type DrawingStyle, type Surface, type Tier, type WrapStyle, type QuoteWreathSize, type QuoteSpritzerSize, type QuoteGarlandLength, isMiniArea, type MiniAreaItem } from "../api";
+import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, isText, isCustom, isPole, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type TextItem, type CustomItem, type CustomUpload, type PoleItem, type Yardstick, type BulbType, type DrawingStyle, type Surface, type Tier, type WrapStyle, type QuoteWreathSize, type QuoteSpritzerSize, type QuoteGarlandLength, isMiniArea, isMiniGroup, type MiniAreaItem, type MiniGroupItem } from "../api";
 import { COLORS, setPalette } from "../editor/colors";
 import { renderStrand, strandLengthPx } from "../editor/strand";
 import { createWreath } from "../editor/wreath";
@@ -2044,7 +2044,17 @@ export async function renderEditor(
       return;
     }
     if (strandSel.length === selectedItems.length) {
-      // Falls through to the strand panel below.
+      // If the selected strands all belong to ONE mini group, edit the GROUP
+      // (its billed attrs + Ungroup) rather than the individual strands.
+      const gid = strandSel[0].groupId;
+      if (gid && strandSel.every((s) => s.groupId === gid)) {
+        const grp = scene.items.find((i) => isMiniGroup(i) && i.id === gid);
+        if (grp && isMiniGroup(grp)) {
+          renderSelectedMiniGroupSidebar(sb, grp);
+          return;
+        }
+      }
+      // else: falls through to the strand panel below.
     } else {
       // Mixed selection — just offer delete.
       const counts: string[] = [];
@@ -2172,6 +2182,12 @@ export async function renderEditor(
       </section>
       ` : ""}
 
+      ${opts.showQuoteBinding && sel.length >= 2 && sel.every((s) => s.bulbType === "mini" && !s.groupId) ? `
+      <section>
+        <button id="sel-group-mini" style="width:100%">Group as one quote unit</button>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Bills these ${sel.length} mini strands as a single unit (e.g. a railing).</div>
+      </section>
+      ` : ""}
       ${opts.showQuoteBinding ? (() => {
         const surfaceOpts: [string, string][] =
           sharedBulbType.length === 1 && sharedBulbType[0] === "c9"
@@ -2356,6 +2372,30 @@ export async function renderEditor(
         updateSelected((s) => ({ ...s, included: incCb.checked }));
       });
     }
+    sb.querySelector("#sel-group-mini")?.addEventListener("click", () => {
+      const memberIds = sel.map((s) => s.id);
+      const groupId = cryptoId();
+      const grp: MiniGroupItem = {
+        id: groupId,
+        kind: "miniGroup",
+        memberIds,
+        yardstickId: null,
+        surface: sel[0].surface ?? "bush",
+        wrapStyle: sel[0].wrapStyle ?? "canopy",
+        stringCount: sel[0].stringCount ?? 1,
+        included: true,
+      };
+      scene = {
+        ...scene,
+        items: [
+          ...scene.items.map((i) => (isStrand(i) && memberIds.includes(i.id) ? { ...i, groupId } : i)),
+          grp,
+        ],
+      };
+      scheduleSave();
+      commit();
+      redrawScene();
+    });
     sb.querySelector("#sel-delete")!.addEventListener("click", deleteSelected);
   }
 
@@ -2982,6 +3022,91 @@ export async function renderEditor(
       redrawScene();
     });
     sb.querySelector("#sel-ma-delete")?.addEventListener("click", deleteSelected);
+  }
+
+  // ============================================================
+  // Sidebar — edit panel for a mini-light GROUP (surfaced when the selected
+  // strands all share one groupId). The group is geometry-less; the member
+  // strands still render/move individually.
+  // ============================================================
+  function renderSelectedMiniGroupSidebar(sb: HTMLElement, group: MiniGroupItem) {
+    const sSurface = group.surface ?? "";
+    const sWrap = group.wrapStyle ?? "canopy";
+    const sCount = group.stringCount ?? 1;
+    const inc = group.included ?? true;
+
+    sb.innerHTML = `
+      <section>
+        <h3>Mini-light group</h3>
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:4px">
+          ${group.memberIds.length} strands billed as one mini-light unit. Edit the billed attributes here, or ungroup to bill them separately.
+        </div>
+      </section>
+      ${opts.showQuoteBinding ? `
+      <section>
+        <h3>Quote binding</h3>
+        <label style="display:block;margin-bottom:2px;font-size:11px;color:var(--text-dim)">Surface</label>
+        <select id="sel-mg-surface" class="yardstick-select">
+          <option value="" ${sSurface === "" ? "selected" : ""}>— none (untagged) —</option>
+          <option value="bush" ${sSurface === "bush" ? "selected" : ""}>Bush</option>
+          <option value="tree" ${sSurface === "tree" ? "selected" : ""}>Tree</option>
+          <option value="column" ${sSurface === "column" ? "selected" : ""}>Column</option>
+        </select>
+        <label style="display:block;margin-top:8px;margin-bottom:2px;font-size:11px;color:var(--text-dim)">Wrap style</label>
+        <select id="sel-mg-wrapstyle" class="yardstick-select">
+          <option value="canopy" ${sWrap === "canopy" ? "selected" : ""}>Canopy</option>
+          <option value="trunk" ${sWrap === "trunk" ? "selected" : ""}>Trunk</option>
+        </select>
+        <label style="display:block;margin-top:8px;margin-bottom:2px;font-size:11px;color:var(--text-dim)">String count</label>
+        <input type="number" id="sel-mg-stringcount" class="yardstick-select" style="width:90px" min="1" step="1" value="${sCount}" />
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:10px">
+          <input type="checkbox" id="sel-mg-included" ${inc === false ? "" : "checked"} />
+          <span>Included in quote</span>
+        </label>
+      </section>
+      ` : ""}
+      <section>
+        <button id="sel-mg-ungroup" style="width:100%">Ungroup</button>
+      </section>
+    `;
+
+    const updateGroup = (mut: (g: MiniGroupItem) => MiniGroupItem) => {
+      scene = { ...scene, items: scene.items.map((i) => (i.id === group.id && isMiniGroup(i) ? mut(i) : i)) };
+      scheduleSave();
+      commit();
+      redrawScene();
+    };
+
+    if (opts.showQuoteBinding) {
+      const surf = sb.querySelector("#sel-mg-surface") as HTMLSelectElement | null;
+      surf?.addEventListener("change", () => {
+        const v = surf.value;
+        updateGroup((g) => ({ ...g, surface: v ? (v as Surface) : null }));
+      });
+      const wrap = sb.querySelector("#sel-mg-wrapstyle") as HTMLSelectElement | null;
+      wrap?.addEventListener("change", () => updateGroup((g) => ({ ...g, wrapStyle: wrap.value as WrapStyle })));
+      const sc = sb.querySelector("#sel-mg-stringcount") as HTMLInputElement | null;
+      sc?.addEventListener("change", () => {
+        const n = Math.max(1, Math.round(Number(sc.value) || 1));
+        updateGroup((g) => ({ ...g, stringCount: n }));
+      });
+      const incCb = sb.querySelector("#sel-mg-included") as HTMLInputElement | null;
+      incCb?.addEventListener("change", () => updateGroup((g) => ({ ...g, included: incCb.checked })));
+    }
+
+    sb.querySelector("#sel-mg-ungroup")?.addEventListener("click", () => {
+      const memberIds = group.memberIds;
+      scene = {
+        ...scene,
+        items: scene.items
+          .filter((i) => i.id !== group.id)
+          .map((i) => (isStrand(i) && memberIds.includes(i.id) ? { ...i, groupId: undefined } : i)),
+      };
+      selectedIds = new Set(memberIds); // keep members selected → strand panel returns
+      scheduleSave();
+      commit();
+      redrawScene();
+    });
   }
 
   // ============================================================
