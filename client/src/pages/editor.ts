@@ -104,7 +104,7 @@ const SPRITZER_SIZES = [16, 24, 36, 48];
 export async function renderEditor(
   root: HTMLElement,
   designId: string,
-  opts: { embedded?: boolean; onBack?: () => void } = {},
+  opts: { embedded?: boolean; onBack?: () => void; showQuoteBinding?: boolean } = {},
 ): Promise<() => void> {
   let design: Design;
   try {

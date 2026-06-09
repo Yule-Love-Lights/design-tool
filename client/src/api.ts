@@ -10,6 +10,17 @@ export type Yardstick = {
 export type BulbType = "c9" | "mini" | "permanent" | "bistro";
 export type DrawingStyle = "strand" | "trace" | "single";
 
+// ----- Quote-integration binding tags (additive; optional; gated UI) -----
+// Let the quote tool project line items from scene items. The standalone design
+// tool ignores them; the "Quote binding" editor controls only render when the
+// embedding app passes showQuoteBinding. Keep these unions in sync with the
+// quote tool's vendored sceneTypes (member-for-member).
+export type Surface =
+  | "santas-roofline" | "gingerbread" | "winter-wonderland" // c9 roofline / extra
+  | "bush" | "tree" | "column";                              // mini-light wraps
+export type Tier = "labor" | "bow" | "fullDecor";
+export type WrapStyle = "canopy" | "trunk";
+
 // ----- Items -----
 // Every drawable thing on a Design's scene lives in `scene.items[]` as a
 // discriminated union. New item types (decor, text, custom, …) get added
@@ -18,6 +29,9 @@ export type DrawingStyle = "strand" | "trace" | "single";
 export type ItemBase = {
   id: string;
   yardstickId: string | null;
+  // Quote-integration portal selection state (optional, gated UI). false hides
+  // the item from the live render + drops it from the quote; unset = included.
+  included?: boolean;
 };
 
 export type StrandItem = ItemBase & {
@@ -37,6 +51,12 @@ export type StrandItem = ItemBase & {
   // length. 0 = taut chord, 0.10 = typical real-world droop, 0.25 = heavy.
   // Ignored for non-bistro strands.
   sagFactor?: number;
+  // Quote-integration binding (optional, gated UI). `surface` tags the strand
+  // for line-item projection; `stringCount` + `wrapStyle` apply to mini-light
+  // wraps (surface bush/tree/column).
+  surface?: Surface;
+  stringCount?: number;
+  wrapStyle?: WrapStyle;
 };
 
 // A wreath sits at (x, y) (its center) and renders as a green ring of greenery
@@ -51,6 +71,7 @@ export type WreathItem = ItemBase & {
   withBow?: boolean; // defaults to true if undefined (back-compat for older designs)
   colorId?: string;   // legacy — no longer used; kept for back-compat
   rotation?: number;
+  tier?: Tier; // quote binding (optional, gated UI)
 };
 
 // A bow sits at (x, y) (its center) and renders as a fixed image scaled to
@@ -77,6 +98,11 @@ export type GarlandItem = ItemBase & {
   drawingStyle: DrawingStyle;
   withLights: boolean;
   sizeIn?: number; // 6 / 9 / 12 / 18 / 24
+  // Quote-integration binding (optional, gated UI). `lengthFt` seeds from the
+  // drawn length but is editable; `withBow` + `tier` drive line-item pricing.
+  lengthFt?: number;
+  withBow?: boolean;
+  tier?: Tier;
 };
 
 // A spritzer is a procedurally rendered radial "spray" of light rays — many
