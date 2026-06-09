@@ -190,6 +190,12 @@ Adds two new ways to author a mini-light unit, each projecting to ONE priced min
 - After: `npx tsc --noEmit -p client/tsconfig.json`, commit, relay the exact `editor.ts` + `miniArea.ts` diff for the quote tool to copy verbatim.
 - **NOTE:** A2 is meatier than A1 (new draw tool + renderer + grouping UX) → recommended as a focused/fresh session; build in committable increments (types → renderer → tool → grouping → panels → defaults).
 
+### A2 follow-up fixes (Jason, post-build testing)
+- ✅ **#4 selection bug FIXED** (commit `fix(editor): make placed Scattershot/miniArea selectable`): a placed miniArea couldn't be selected/moved — the hit target was a near-transparent closed Line under the bulbs; replaced with a solid `Rect` (box) added topmost, mirroring the spritzer hit. Re-verify.
+- ⬜ **#1 RELOCATE to Lights as a 4th drawing style "Scattershot"** (next to Strand/Trace/Single) — NOT a Decor sub-type. Should drag-to-draw a box → `commitMiniArea(rect)`. Remove the Decor "Mini Area" sub-type/button/draw-panel/place-dispatch. Use a local editor flag (e.g. `tool.scattershot`) — do NOT add "scattershot" to the shared `DrawingStyle` type (it's only valid for strands). This relabel IS the rename (#3).
+- ⬜ **#3 RENAME** all UI "Mini Area" / "Mini-light area" → **"Scattershot"** (done as part of #1). Keep internal `kind:"miniArea"` to avoid churning the locked type (or rename the kind too via quote-tool coordination).
+- ⬜ **#2 ADD "railing" surface** to the mini-strand / miniArea / group surface dropdowns. ⚠️ `railing` is NOT in the locked Surface taxonomy → a **v0.5 shared-type change**: the quote tool must add `railing` to their `Surface` type + a price-book rate. Coordinate before/with shipping.
+
 ## More to come
 Jason flagged this is a baseline, not the full spec — "more ideas will pop up as we develop." Portal-side details beyond the above may expand. Append here as they do.
 
