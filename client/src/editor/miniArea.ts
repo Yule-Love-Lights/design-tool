@@ -54,16 +54,6 @@ export function renderMiniArea(item: MiniAreaItem, pxPerFoot: number): Konva.Gro
   });
   group.add(outline);
 
-  // Invisible fill so clicks anywhere inside the area hit this group.
-  const hit = new Konva.Line({
-    points: local,
-    closed: true,
-    fill: "rgba(0,0,0,0.001)",
-    listening: true,
-    name: "miniArea-hit",
-  });
-  group.add(hit);
-
   // Scatter bulbs (rejection-sampled inside the polygon for non-box shapes).
   const rng = makeRng(item.id);
   const [minX, minY, maxX, maxY] = bbox(local);
@@ -106,6 +96,14 @@ export function renderMiniArea(item: MiniAreaItem, pxPerFoot: number): Konva.Gro
     );
     placed++;
   }
+
+  // Invisible fill on TOP so clicks anywhere inside the area select/drag this
+  // group (mirrors the spritzer hit shape; added last = topmost hit target).
+  const hit =
+    item.shape === "polygon"
+      ? new Konva.Line({ points: local, closed: true, fill: "rgba(0,0,0,0.001)", listening: true, name: "miniArea-hit" })
+      : new Konva.Rect({ x: 0, y: 0, width: widthPx, height: heightPx, fill: "rgba(0,0,0,0.001)", listening: true, name: "miniArea-hit" });
+  group.add(hit);
 
   // Stash the rendered px size so the editor can build a keep-fit Transformer
   // bounding box for box-shaped areas.
