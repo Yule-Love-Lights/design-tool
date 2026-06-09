@@ -1,5 +1,5 @@
 import Konva from "konva";
-import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, isText, isCustom, isPole, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type TextItem, type CustomItem, type CustomUpload, type PoleItem, type Yardstick, type BulbType, type DrawingStyle, type Surface, type Tier, type WrapStyle, type QuoteWreathSize, type QuoteSpritzerSize, type QuoteGarlandLength } from "../api";
+import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, isText, isCustom, isPole, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type TextItem, type CustomItem, type CustomUpload, type PoleItem, type Yardstick, type BulbType, type DrawingStyle, type Surface, type Tier, type WrapStyle, type QuoteWreathSize, type QuoteSpritzerSize, type QuoteGarlandLength, isMiniArea, type MiniAreaItem } from "../api";
 import { COLORS, setPalette } from "../editor/colors";
 import { renderStrand, strandLengthPx } from "../editor/strand";
 import { createWreath } from "../editor/wreath";
@@ -9,6 +9,7 @@ import { createSpritzer } from "../editor/spritzer";
 import { renderText, fontsReady, FONT_OPTIONS, DEFAULT_TEXT_SIZE_IN, type FontFamily } from "../editor/text";
 import { createCustom } from "../editor/custom";
 import { createPole } from "../editor/pole";
+import { renderMiniArea } from "../editor/miniArea";
 import { preloadAssets } from "../editor/assets";
 import { renderYardstick, pxPerFoot, yardstickLabel } from "../editor/yardstick";
 
@@ -594,6 +595,10 @@ export async function renderEditor(
         if (tool.category === "lights" && tool.bulbType === "bistro" && toolMode === "draw") {
           g.draggable(false);
         }
+      } else if (isMiniArea(item)) {
+        g = renderMiniArea(item, ppfForActiveYardstick());
+        g.draggable(true);
+        g.on("transformend dragend", () => bakeTransformIntoMiniArea(g, item.id));
       } else {
         continue;
       }
@@ -892,6 +897,43 @@ export async function renderEditor(
           : i,
       ),
     };
+    group.scaleX(1);
+    group.scaleY(1);
+    scheduleSave();
+    commit();
+    redrawScene();
+  }
+
+  // Bake a miniArea move/resize back into the item. Box: position → x/y, scale →
+  // width/height. Polygon: shift/scale the points by the group's transform.
+  function bakeTransformIntoMiniArea(group: Konva.Group, areaId: string) {
+    const cur = scene.items.find((i) => i.id === areaId);
+    if (!cur || !isMiniArea(cur)) return;
+    const sx = group.scaleX();
+    const sy = group.scaleY();
+    if (cur.shape === "polygon" && cur.points && cur.points.length >= 6) {
+      let minX = Infinity, minY = Infinity;
+      for (let i = 0; i + 1 < cur.points.length; i += 2) {
+        minX = Math.min(minX, cur.points[i]);
+        minY = Math.min(minY, cur.points[i + 1]);
+      }
+      const next = cur.points.map((p, i) =>
+        i % 2 === 0 ? group.x() + (p - minX) * sx : group.y() + (p - minY) * sy,
+      );
+      scene = {
+        ...scene,
+        items: scene.items.map((i) => (i.id === areaId && isMiniArea(i) ? { ...i, points: next } : i)),
+      };
+    } else {
+      const w = Math.max(4, (cur.width ?? 0) * sx);
+      const h = Math.max(4, (cur.height ?? 0) * sy);
+      scene = {
+        ...scene,
+        items: scene.items.map((i) =>
+          i.id === areaId && isMiniArea(i) ? { ...i, x: group.x(), y: group.y(), width: w, height: h } : i,
+        ),
+      };
+    }
     group.scaleX(1);
     group.scaleY(1);
     scheduleSave();
