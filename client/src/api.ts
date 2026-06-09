@@ -20,6 +20,13 @@ export type Surface =
   | "bush" | "tree" | "column";                              // mini-light wraps
 export type Tier = "labor" | "bow" | "fullDecor";
 export type WrapStyle = "canopy" | "trunk";
+// The REAL billed product (staff-set; mirrors the quote tool's price book).
+// Item size in the design is VISUAL ONLY (staff draw whatever looks best on the
+// photo, e.g. a 60" drawn wreath may be a 30" Noble) — the billed spec is these
+// explicit quote* fields, NOT the drawn size.
+export type QuoteSpritzerSize = "16" | "24" | "32";
+export type QuoteWreathSize = "24noble" | "30noble" | "36noble" | "48noble" | "36oregon";
+export type QuoteGarlandLength = "4.5ft" | "9ft";
 
 // ----- Items -----
 // Every drawable thing on a Design's scene lives in `scene.items[]` as a
@@ -29,8 +36,10 @@ export type WrapStyle = "canopy" | "trunk";
 export type ItemBase = {
   id: string;
   yardstickId: string | null;
-  // Quote-integration portal selection state (optional, gated UI). false hides
-  // the item from the live render + drops it from the quote; unset = included.
+  // Quote-integration binding (optional, gated UI). `surface` tags the item for
+  // line-item projection (on ItemBase to future-proof perm/bistro). `included`
+  // false hides it from the live render + drops it from the quote; unset = included.
+  surface?: Surface | null;
   included?: boolean;
 };
 
@@ -51,10 +60,9 @@ export type StrandItem = ItemBase & {
   // length. 0 = taut chord, 0.10 = typical real-world droop, 0.25 = heavy.
   // Ignored for non-bistro strands.
   sagFactor?: number;
-  // Quote-integration binding (optional, gated UI). `surface` tags the strand
-  // for line-item projection; `stringCount` + `wrapStyle` apply to mini-light
-  // wraps (surface bush/tree/column).
-  surface?: Surface;
+  // Quote-integration binding (optional, gated UI). `stringCount` + `wrapStyle`
+  // apply to mini-light wraps (surface bush/tree/column); `surface` itself lives
+  // on ItemBase.
   stringCount?: number;
   wrapStyle?: WrapStyle;
 };
@@ -71,7 +79,11 @@ export type WreathItem = ItemBase & {
   withBow?: boolean; // defaults to true if undefined (back-compat for older designs)
   colorId?: string;   // legacy — no longer used; kept for back-compat
   rotation?: number;
-  tier?: Tier; // quote binding (optional, gated UI)
+  // Quote binding (optional, gated UI). `quoteSize` = the REAL billed product,
+  // independent of the drawn `sizeIn`; `tier` drives price; `withBow` is a
+  // visual seed only.
+  quoteSize?: QuoteWreathSize;
+  tier?: Tier;
 };
 
 // A bow sits at (x, y) (its center) and renders as a fixed image scaled to
@@ -98,9 +110,11 @@ export type GarlandItem = ItemBase & {
   drawingStyle: DrawingStyle;
   withLights: boolean;
   sizeIn?: number; // 6 / 9 / 12 / 18 / 24
-  // Quote-integration binding (optional, gated UI). `lengthFt` seeds from the
-  // drawn length but is editable; `withBow` + `tier` drive line-item pricing.
-  lengthFt?: number;
+  // Quote binding (optional, gated UI). Billed by `quoteLength` (4.5/9ft) ×
+  // `quoteSections` (staff-set, NOT derived from the drawn length); `tier`
+  // drives price; `withBow` is a visual seed only.
+  quoteLength?: QuoteGarlandLength;
+  quoteSections?: number;
   withBow?: boolean;
   tier?: Tier;
 };
@@ -117,6 +131,7 @@ export type SpritzerItem = ItemBase & {
   y: number;
   sizeIn: number; // 16 / 24 / 36 / 48
   colorPattern: string[];
+  quoteSize?: QuoteSpritzerSize; // quote binding (optional, gated UI): billed size
 };
 
 // A text item is lit-up letters layered on the photo. Sits at (x, y) (its
