@@ -172,6 +172,11 @@ Adds two new ways to author a mini-light unit, each projecting to ONE priced min
 - Decisions (design-tool calls, adopted): (a) railing group = `MiniGroupItem`; (b) density 0–1; (c) **bushes-first** (columns stay trunk-wrap strands; tree = optional canopy use).
 - Projection skip-logic (quote side, shipped): grouped strand → skip · ungrouped mini strand w/ surface → 1 · `miniArea` → 1 · `miniGroup` → 1 (sceneItemIds = memberIds).
 
+### Build progress (Session 3)
+- ✅ **Types** (commit `2e62d2a`) — `MiniBilling`/`MiniAreaItem`/`MiniGroupItem`/`StrandItem.groupId`/union/guards, tsc clean.
+- ✅ **Renderer + dispatch + bake** (commit `78b2506`) — `client/src/editor/miniArea.ts` (box+polygon scatter fill, seeded, density→count, lighten glow), wired into `redrawScene` dispatch (`miniGroup` → renders nothing, as intended) + `bakeTransformIntoMiniArea` (box position/resize, polygon drag). tsc clean.
+- ⬜ **STILL REMAINING:** miniArea **authoring** (place/draw tool + edit panel + creation defaults) and **grouping** (MiniGroupItem group action/panel/ungroup) — items 3–6 below. Authoring approach to use: add a Decor sub-type "Mini Area" (click-to-place a default ~3ft box, resize via Transformer) mirroring the spritzer click-place wiring — `DecorType += "miniArea"`, a sub-type button, the click-dispatch branch (~editor.ts:1095) → `commitMiniArea(p)`, a `renderSelectedMiniAreaSidebar` (density slider + gated Quote-binding + delete) routed in `renderSelectedSidebar`. Grouping can be a separate follow-up (quote side already supports the type + projection).
+
 ### REMAINING — design-tool build (the canonical shared editor.ts + new renderer)
 1. **`client/src/editor/miniArea.ts`** (NEW file, like the other renderers — quote tool wires it into `render-readonly.ts` too): export a render fn matching the other renderers' signatures that fills the box/polygon with **deterministically-scattered** mini bulbs (seed by `item.id`, like spritzer's `makeRng`); bulb count = `density × real-world area × k` so fill stays consistent at any size; reuse the mini-bulb glow (bulb.ts / strand mini). Point-in-polygon scatter for the polygon shape.
 2. **`api.ts`** — the locked types above (+ guards + union).
