@@ -62,9 +62,11 @@ export type StrandItem = ItemBase & {
   sagFactor?: number;
   // Quote-integration binding (optional, gated UI). `stringCount` + `wrapStyle`
   // apply to mini-light wraps (surface bush/tree/column); `surface` itself lives
-  // on ItemBase.
+  // on ItemBase. `groupId` back-refs a MiniGroupItem — grouped strands are
+  // visual-only and skipped in projection (priced via their group).
   stringCount?: number;
   wrapStyle?: WrapStyle;
+  groupId?: string;
 };
 
 // A wreath sits at (x, y) (its center) and renders as a green ring of greenery
@@ -190,7 +192,33 @@ export type PoleItem = ItemBase & {
   baseType: "none" | "cube" | "barrel";
 };
 
-export type SceneItem = StrandItem | WreathItem | BowItem | GarlandItem | SpritzerItem | TextItem | CustomItem | PoleItem;
+// ----- Mini-light area + grouping (A2 / v0.4) -----
+// Two more ways to author a mini-light unit (alongside a single mini strand),
+// each projecting to ONE priced mini line item. Sizing is visual-only; the
+// billed quantity is the staff-set `stringCount` (shared MiniBilling).
+export type MiniBilling = { wrapStyle?: WrapStyle; stringCount?: number };
+
+// A box / traced polygon that fills with deterministically-scattered single
+// mini-lights. `density` (0–1) is VISUAL fill only — no price effect.
+export type MiniAreaItem = ItemBase & MiniBilling & {
+  kind: "miniArea";
+  shape: "box" | "polygon";
+  x?: number; y?: number; width?: number; height?: number; // box
+  points?: number[]; // polygon, flat [x0,y0,…], auto-closed on finish
+  density?: number;  // 0–1 visual fill density (NOT a count)
+  // surface + included inherited from ItemBase
+};
+
+// Groups existing drawn strands into ONE priced mini unit (e.g. a railing made
+// of several segments). Geometry-less — its extent is its members. Member
+// strands carry `groupId` (back-ref) and are skipped in projection.
+export type MiniGroupItem = ItemBase & MiniBilling & {
+  kind: "miniGroup";
+  memberIds: string[];
+  // surface + included inherited from ItemBase
+};
+
+export type SceneItem = StrandItem | WreathItem | BowItem | GarlandItem | SpritzerItem | TextItem | CustomItem | PoleItem | MiniAreaItem | MiniGroupItem;
 
 // One entry in the user's custom-graphic library (persisted server-side under
 // app_settings.user_uploads). Designs reference these by `path` so library
@@ -445,4 +473,10 @@ export function isCustom(item: SceneItem): item is CustomItem {
 }
 export function isPole(item: SceneItem): item is PoleItem {
   return item.kind === "pole";
+}
+export function isMiniArea(item: SceneItem): item is MiniAreaItem {
+  return item.kind === "miniArea";
+}
+export function isMiniGroup(item: SceneItem): item is MiniGroupItem {
+  return item.kind === "miniGroup";
 }
