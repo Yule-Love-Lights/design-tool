@@ -50,7 +50,7 @@ const STYLE_HELP: Record<DrawingStyle, string> = {
 };
 
 type ItemCategory = "lights" | "decor" | "text" | "custom" | "poles";
-type DecorType = "wreath" | "bow" | "garland" | "spritzer";
+type DecorType = "wreath" | "bow" | "garland" | "spritzer" | "miniArea";
 
 type ToolState = {
   category: ItemCategory;
@@ -1454,6 +1454,7 @@ export async function renderEditor(
           <button data-decor="bow" class="${tool.decorType === "bow" ? "active" : ""}">Bow</button>
           <button data-decor="garland" class="${tool.decorType === "garland" ? "active" : ""}">Garland</button>
           <button data-decor="spritzer" class="${tool.decorType === "spritzer" ? "active" : ""}">Spritzer</button>
+          <button data-decor="miniArea" class="${tool.decorType === "miniArea" ? "active" : ""}">Mini Area</button>
         </div>
         ${(() => {
           if (tool.decorType === "wreath") {
@@ -1535,6 +1536,11 @@ export async function renderEditor(
           ${STYLES.map((s) => `<button data-style="${s.id}" class="${tool.drawingStyle === s.id ? "active" : ""}">${s.label}</button>`).join("")}
         </div>
         <div class="style-help">${STYLE_HELP[tool.drawingStyle]}</div>
+      </section>
+      ` : tool.decorType === "miniArea" ? `
+      <section>
+        <h3>Mini-light area</h3>
+        <div class="style-help">Click on the photo to drop a mini-light area (a default ~3 ft box), then drag its corners to fit the bush/shape. Fill density and the billed string count are set in the edit panel after placing.</div>
       </section>
       ` : `
       <section>
@@ -2002,6 +2008,7 @@ export async function renderEditor(
     const textSel = selectedItems.filter(isText);
     const customSel = selectedItems.filter(isCustom);
     const poleSel = selectedItems.filter(isPole);
+    const miniAreaSel = selectedItems.filter(isMiniArea);
 
     // All-of-one-kind → dedicated edit panel.
     if (wreathSel.length === selectedItems.length) {
@@ -2030,6 +2037,10 @@ export async function renderEditor(
     }
     if (poleSel.length === selectedItems.length) {
       renderSelectedPoleSidebar(sb, poleSel);
+      return;
+    }
+    if (miniAreaSel.length === selectedItems.length) {
+      renderSelectedMiniAreaSidebar(sb, miniAreaSel);
       return;
     }
     if (strandSel.length === selectedItems.length) {
@@ -2852,6 +2863,128 @@ export async function renderEditor(
   }
 
   // ============================================================
+  // Sidebar — edit panel for the currently selected mini-area(s)
+  // ============================================================
+  function renderSelectedMiniAreaSidebar(sb: HTMLElement, sel: MiniAreaItem[]) {
+    const sharedDensity = uniq(sel.map((a) => a.density ?? 0.5));
+    const sSurface = uniq(sel.map((a) => a.surface ?? ""));
+    const sWrap = uniq(sel.map((a) => a.wrapStyle ?? "canopy"));
+    const sCount = uniq(sel.map((a) => a.stringCount ?? 1));
+    const sInc = uniq(sel.map((a) => a.included ?? true));
+    const densityVal = sharedDensity.length === 1 ? sharedDensity[0] : 0.5;
+
+    sb.innerHTML = `
+      <section>
+        <h3>${sel.length === 1 ? "Edit Mini Area" : `Edit ${sel.length} Mini Areas`}</h3>
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:4px">
+          Drag the body to move · drag corners to resize the fill region.
+        </div>
+      </section>
+      ${(() => {
+        const count = scene.items.filter(isMiniArea).length;
+        return `<section><button id="sel-select-all-miniareas" style="width:100%" ${count === 0 ? "disabled" : ""}>
+          Select All Mini Areas (${count})
+        </button></section>`;
+      })()}
+      <section>
+        <h3>Fill density <span id="sel-ma-density-val" style="float:right;color:var(--text);font-weight:400">${Math.round(densityVal * 100)}%</span></h3>
+        <input type="range" id="sel-ma-density" min="0" max="1" step="0.05" value="${densityVal}" />
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Visual only — how densely the area fills with mini-lights. Doesn't affect the quote.</div>
+      </section>
+      ${opts.showQuoteBinding ? `
+      <section>
+        <h3>Quote binding</h3>
+        <label style="display:block;margin-bottom:2px;font-size:11px;color:var(--text-dim)">Surface</label>
+        <select id="sel-ma-surface" class="yardstick-select">
+          <option value="">${sSurface.length > 1 ? "— mixed —" : "— none (untagged) —"}</option>
+          <option value="bush" ${sSurface.length === 1 && sSurface[0] === "bush" ? "selected" : ""}>Bush</option>
+          <option value="tree" ${sSurface.length === 1 && sSurface[0] === "tree" ? "selected" : ""}>Tree</option>
+          <option value="column" ${sSurface.length === 1 && sSurface[0] === "column" ? "selected" : ""}>Column</option>
+        </select>
+        <label style="display:block;margin-top:8px;margin-bottom:2px;font-size:11px;color:var(--text-dim)">Wrap style</label>
+        <select id="sel-ma-wrapstyle" class="yardstick-select">
+          <option value="canopy" ${sWrap.length === 1 && sWrap[0] === "canopy" ? "selected" : ""}>Canopy</option>
+          <option value="trunk" ${sWrap.length === 1 && sWrap[0] === "trunk" ? "selected" : ""}>Trunk</option>
+        </select>
+        <label style="display:block;margin-top:8px;margin-bottom:2px;font-size:11px;color:var(--text-dim)">String count</label>
+        <input type="number" id="sel-ma-stringcount" class="yardstick-select" style="width:90px" min="1" step="1" value="${sCount.length === 1 ? sCount[0] : 1}" />
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:10px">
+          <input type="checkbox" id="sel-ma-included" ${sInc.length === 1 && sInc[0] === false ? "" : "checked"} />
+          <span>Included in quote</span>
+        </label>
+      </section>
+      ` : ""}
+      <section style="display:flex;gap:6px">
+        <button id="sel-ma-duplicate">Duplicate</button>
+        <button id="sel-ma-delete" class="danger">Delete</button>
+      </section>
+    `;
+
+    const updateMiniAreas = (mut: (a: MiniAreaItem) => MiniAreaItem) => {
+      scene = { ...scene, items: scene.items.map((i) => (isMiniArea(i) && selectedIds.has(i.id) ? mut(i) : i)) };
+      scheduleSave();
+      commit();
+      redrawScene();
+    };
+
+    sb.querySelector("#sel-select-all-miniareas")?.addEventListener("click", () => {
+      const ids = scene.items.filter(isMiniArea).map((a) => a.id);
+      if (ids.length === 0) return;
+      selectedIds = new Set(ids);
+      selectedYardstickId = null;
+      redrawScene();
+    });
+
+    const dInput = sb.querySelector("#sel-ma-density") as HTMLInputElement | null;
+    const dLabel = sb.querySelector("#sel-ma-density-val") as HTMLElement | null;
+    dInput?.addEventListener("input", () => {
+      const v = Number(dInput.value);
+      if (dLabel) dLabel.textContent = `${Math.round(v * 100)}%`;
+      scene = { ...scene, items: scene.items.map((i) => (isMiniArea(i) && selectedIds.has(i.id) ? { ...i, density: v } : i)) };
+      scheduleSave();
+      requestCanvasRedraw();
+    });
+    dInput?.addEventListener("change", () => commit());
+
+    if (opts.showQuoteBinding) {
+      const surf = sb.querySelector("#sel-ma-surface") as HTMLSelectElement | null;
+      surf?.addEventListener("change", () => {
+        const v = surf.value;
+        updateMiniAreas((a) => ({ ...a, surface: v ? (v as Surface) : null }));
+      });
+      const wrap = sb.querySelector("#sel-ma-wrapstyle") as HTMLSelectElement | null;
+      wrap?.addEventListener("change", () => {
+        updateMiniAreas((a) => ({ ...a, wrapStyle: wrap.value as WrapStyle }));
+      });
+      const sc = sb.querySelector("#sel-ma-stringcount") as HTMLInputElement | null;
+      sc?.addEventListener("change", () => {
+        const n = Math.max(1, Math.round(Number(sc.value) || 1));
+        updateMiniAreas((a) => ({ ...a, stringCount: n }));
+      });
+      const inc = sb.querySelector("#sel-ma-included") as HTMLInputElement | null;
+      inc?.addEventListener("change", () => {
+        updateMiniAreas((a) => ({ ...a, included: inc.checked }));
+      });
+    }
+
+    sb.querySelector("#sel-ma-duplicate")?.addEventListener("click", () => {
+      const dupes = sel.map((a) => ({
+        ...a,
+        id: cryptoId(),
+        ...(a.shape === "polygon" && a.points
+          ? { points: a.points.map((p) => p + 20) }
+          : { x: (a.x ?? 0) + 20, y: (a.y ?? 0) + 20 }),
+      }));
+      scene = { ...scene, items: [...scene.items, ...dupes] };
+      selectedIds = new Set(dupes.map((a) => a.id));
+      scheduleSave();
+      commit();
+      redrawScene();
+    });
+    sb.querySelector("#sel-ma-delete")?.addEventListener("click", deleteSelected);
+  }
+
+  // ============================================================
   // Sidebar — edit panel for the currently selected text item(s)
   // ============================================================
   function renderSelectedTextSidebar(sb: HTMLElement, sel: TextItem[]) {
@@ -3560,6 +3693,29 @@ export async function renderEditor(
     commit();
   }
 
+  function commitMiniArea(p: { x: number; y: number }) {
+    const side = Math.max(40, 3 * ppfForActiveYardstick()); // default ~3 ft box
+    const area: MiniAreaItem = {
+      id: cryptoId(),
+      kind: "miniArea",
+      shape: "box",
+      x: p.x - side / 2,
+      y: p.y - side / 2,
+      width: side,
+      height: side,
+      density: 0.5,
+      yardstickId: activeYs()?.id ?? null,
+      surface: "bush",
+      wrapStyle: "canopy",
+      stringCount: 1,
+      included: true,
+    };
+    scene = { ...scene, items: [...scene.items, area] };
+    selectedIds = new Set([area.id]);
+    scheduleSave();
+    commit();
+  }
+
   function commitText(p: { x: number; y: number }) {
     const item: TextItem = {
       id: cryptoId(),
@@ -3897,6 +4053,7 @@ export async function renderEditor(
       if (tool.decorType === "wreath") commitWreath(p);
       else if (tool.decorType === "bow") commitBow(p);
       else if (tool.decorType === "spritzer") commitSpritzer(p);
+      else if (tool.decorType === "miniArea") commitMiniArea(p);
       redrawScene();
       return;
     }
