@@ -17,7 +17,7 @@ export type DrawingStyle = "strand" | "trace" | "single";
 // quote tool's vendored sceneTypes (member-for-member).
 export type Surface =
   | "santas-roofline" | "gingerbread" | "winter-wonderland" // c9 roofline / extra
-  | "bush" | "tree" | "column";                              // mini-light wraps
+  | "bush" | "tree" | "column" | "railing";                 // mini-light wraps (railing = grouped/strand mini wrap)
 export type Tier = "labor" | "bow" | "fullDecor";
 export type WrapStyle = "canopy" | "trunk";
 // The REAL billed product (staff-set; mirrors the quote tool's price book).

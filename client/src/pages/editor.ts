@@ -2193,13 +2193,13 @@ export async function renderEditor(
           sharedBulbType.length === 1 && sharedBulbType[0] === "c9"
             ? [["santas-roofline", "Santa's Roofline"], ["gingerbread", "Gingerbread"], ["winter-wonderland", "Winter Wonderland"]]
             : sharedBulbType.length === 1 && sharedBulbType[0] === "mini"
-            ? [["bush", "Bush"], ["tree", "Tree"], ["column", "Column"]]
+            ? [["bush", "Bush"], ["tree", "Tree"], ["column", "Column"], ["railing", "Railing"]]
             : [];
         const sSurface = uniq(sel.map((s) => s.surface ?? ""));
         const sInc = uniq(sel.map((s) => s.included ?? true));
         const sWrap = uniq(sel.map((s) => s.wrapStyle ?? "canopy"));
         const sCount = uniq(sel.map((s) => s.stringCount ?? 1));
-        const wrapSurface = sSurface.length === 1 && ["bush", "tree", "column"].includes(sSurface[0]);
+        const wrapSurface = sSurface.length === 1 && ["bush", "tree", "column", "railing"].includes(sSurface[0]);
         return `
       <section>
         <h3>Quote binding</h3>
@@ -2940,6 +2940,7 @@ export async function renderEditor(
           <option value="bush" ${sSurface.length === 1 && sSurface[0] === "bush" ? "selected" : ""}>Bush</option>
           <option value="tree" ${sSurface.length === 1 && sSurface[0] === "tree" ? "selected" : ""}>Tree</option>
           <option value="column" ${sSurface.length === 1 && sSurface[0] === "column" ? "selected" : ""}>Column</option>
+          <option value="railing" ${sSurface.length === 1 && sSurface[0] === "railing" ? "selected" : ""}>Railing</option>
         </select>
         <label style="display:block;margin-top:8px;margin-bottom:2px;font-size:11px;color:var(--text-dim)">Wrap style</label>
         <select id="sel-ma-wrapstyle" class="yardstick-select">
@@ -3051,6 +3052,7 @@ export async function renderEditor(
           <option value="bush" ${sSurface === "bush" ? "selected" : ""}>Bush</option>
           <option value="tree" ${sSurface === "tree" ? "selected" : ""}>Tree</option>
           <option value="column" ${sSurface === "column" ? "selected" : ""}>Column</option>
+          <option value="railing" ${sSurface === "railing" ? "selected" : ""}>Railing</option>
         </select>
         <label style="display:block;margin-top:8px;margin-bottom:2px;font-size:11px;color:var(--text-dim)">Wrap style</label>
         <select id="sel-mg-wrapstyle" class="yardstick-select">
