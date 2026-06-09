@@ -160,6 +160,29 @@ A1 adds gated "Quote binding" controls to the editor so staff tag scene items fo
 
 - **Follow-up for the quote tool:** the locked contract §4 binding-field list predates this type growth (no `quote*` fields; still lists garland `lengthFt`). They own the contract — bump §4 to the revised block; re-mirror `project_integration_data_contract.md` here when they do.
 
+## A2 — mini-light area tool + railing grouping (v0.4 LOCKED; build plan, Session 3)
+Adds two new ways to author a mini-light unit, each projecting to ONE priced mini line item (per-instance; sizing visual-only; same model as A1 mini strands). **Approach: design tool writes the canonical shared `editor.ts` + a NEW standalone renderer file; quote tool copies both verbatim and wires the renderer into its read-only portal renderer (`render-readonly.ts`).** Quote side already shipped: `projectScene` skip-logic + the v0.4 types (tsc + 94 tests green).
+
+### Locked v0.4 types (match the quote tool's `sceneTypes` member-for-member)
+- `export type MiniBilling = { wrapStyle?: WrapStyle; stringCount?: number };`
+- `MiniAreaItem = ItemBase & MiniBilling & { kind:"miniArea"; shape:"box"|"polygon"; x?,y?,width?,height? (box); points?:number[] (polygon, flat, auto-closed on finish); density?:number (0–1 VISUAL fill, NOT a count) }` — `surface`+`included` inherited from ItemBase.
+- `MiniGroupItem = ItemBase & MiniBilling & { kind:"miniGroup"; memberIds:string[] }` — **geometry-less** (extent = members); `surface`+`included` from ItemBase.
+- `StrandItem` gains `groupId?: string` (backref; grouped strands are visual-only, skipped in projection).
+- `SceneItem` union `+= MiniAreaItem | MiniGroupItem`; add guards `isMiniArea`/`isMiniGroup`.
+- Decisions (design-tool calls, adopted): (a) railing group = `MiniGroupItem`; (b) density 0–1; (c) **bushes-first** (columns stay trunk-wrap strands; tree = optional canopy use).
+- Projection skip-logic (quote side, shipped): grouped strand → skip · ungrouped mini strand w/ surface → 1 · `miniArea` → 1 · `miniGroup` → 1 (sceneItemIds = memberIds).
+
+### REMAINING — design-tool build (the canonical shared editor.ts + new renderer)
+1. **`client/src/editor/miniArea.ts`** (NEW file, like the other renderers — quote tool wires it into `render-readonly.ts` too): export a render fn matching the other renderers' signatures that fills the box/polygon with **deterministically-scattered** mini bulbs (seed by `item.id`, like spritzer's `makeRng`); bulb count = `density × real-world area × k` so fill stays consistent at any size; reuse the mini-bulb glow (bulb.ts / strand mini). Point-in-polygon scatter for the polygon shape.
+2. **`api.ts`** — the locked types above (+ guards + union).
+3. **Draw tool** in `editor.ts`: new authoring mode for miniArea — **box** (drag a rect) + **polygon** (click vertices, Enter/dbl-click to finish, auto-close). Mirror the existing strand/garland draw machinery (`dragPts`/`tracePts`/preview/`commit*`). Place under Lights → Mini (or its own decor-style sub-tool).
+4. **Railing grouping**: a "Group as one quote unit" action when ≥2 mini strands are selected → create a `MiniGroupItem` (memberIds) + set `groupId` on members. Group is geometry-less: selecting grouped strands surfaces a **group edit panel** (surface/wrapStyle/stringCount/included + **Ungroup**); Ungroup removes the group + clears members' `groupId`. Members still render/move individually.
+5. **Edit panels** (billed attrs gated behind `opts.showQuoteBinding`, like A1): miniArea panel (density slider [visual] + Quote binding surface/wrapStyle/stringCount/included); miniGroup panel (billed attrs + Ungroup).
+6. **Creation defaults** (quote tool's suggestion): `included:true, surface:"bush", wrapStyle:"canopy", stringCount:1, density ~0.5`.
+7. **Render dispatch**: add `miniArea` to `redrawScene`'s item dispatch (→ `renderMiniArea`); `miniGroup` renders nothing itself (members render). Handle any exhaustive `switch`.
+- After: `npx tsc --noEmit -p client/tsconfig.json`, commit, relay the exact `editor.ts` + `miniArea.ts` diff for the quote tool to copy verbatim.
+- **NOTE:** A2 is meatier than A1 (new draw tool + renderer + grouping UX) → recommended as a focused/fresh session; build in committable increments (types → renderer → tool → grouping → panels → defaults).
+
 ## More to come
 Jason flagged this is a baseline, not the full spec — "more ideas will pop up as we develop." Portal-side details beyond the above may expand. Append here as they do.
 
