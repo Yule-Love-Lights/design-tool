@@ -1858,7 +1858,11 @@ export async function renderEditor(
 
     // Pre-draw config for perm lights. Updates tool state (no scene mutation; these
     // values get baked into newly-created strands only). Labels update inline.
-    if (tool.bulbType === "permanent") {
+    // Category guard: the sliders only exist in the Lights branch HTML, but
+    // tool.bulbType keeps its value across category switches — without the
+    // guard this block throws when e.g. Decor renders while bulbType is
+    // still "permanent".
+    if (tool.category === "lights" && tool.bulbType === "permanent") {
       const wireToolSlider = (
         id: string,
         key: "beamLengthFt" | "beamWidthFt" | "distanceToSurfaceFt" | "opacity",
@@ -1924,11 +1928,14 @@ export async function renderEditor(
         renderSidebar();
       }),
     );
-    sb.querySelector("#add-color")!.addEventListener("click", () => {
+    // These exist only in the Lights branch — optional-chain so rendering any
+    // other category's panel doesn't throw mid-renderSidebar (a throw here
+    // aborts the caller's redrawScene and corrupts Konva's event dispatch).
+    sb.querySelector("#add-color")?.addEventListener("click", () => {
       tool.colorPattern = [...tool.colorPattern, tool.pickerColorId];
       renderSidebar();
     });
-    sb.querySelector("#clear-pattern")!.addEventListener("click", () => {
+    sb.querySelector("#clear-pattern")?.addEventListener("click", () => {
       tool.colorPattern = [tool.pickerColorId];
       renderSidebar();
     });
@@ -4128,6 +4135,12 @@ export async function renderEditor(
 
     // Click on an existing spritzer — same deal as wreath/bow.
     if (e.target.findAncestor(".spritzer", true)) return;
+
+    // Click on an existing mini-light area — let its click handler select it;
+    // don't fall through to the place/draw pipeline (which would drop a
+    // duplicate box and destroy the pressed group mid-gesture). Same trace
+    // exception as strands/garlands: mid-trace clicks continue the polyline.
+    if (e.target.findAncestor(".miniArea", true) && !tracePts) return;
 
     // Click on an existing text item — same.
     if (e.target.findAncestor(".text", true)) return;
