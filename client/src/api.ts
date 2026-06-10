@@ -206,6 +206,9 @@ export type MiniAreaItem = ItemBase & MiniBilling & {
   x?: number; y?: number; width?: number; height?: number; // box
   points?: number[]; // polygon, flat [x0,y0,…], auto-closed on finish
   density?: number;  // 0–1 visual fill density (NOT a count)
+  // Color IDs (palette-resolved, like strand/spritzer); bulbs cycle through
+  // the pattern. Missing/empty ⇒ warm-white (back-compat with pre-color areas).
+  colorPattern?: string[];
   // surface + included inherited from ItemBase
 };
 
