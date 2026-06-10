@@ -2254,9 +2254,10 @@ export async function renderEditor(
         const sInc = uniq(sel.map((s) => s.included ?? true));
         const sWrap = uniq(sel.map((s) => s.wrapStyle ?? "canopy"));
         const sCount = uniq(sel.map((s) => s.stringCount ?? 1));
-        // Wrap style applies to wrapped surfaces only — railings have no wrap
-        // (the quote prices railings per string and ignores wrapStyle).
-        const wrapSurface = sSurface.length === 1 && ["bush", "tree", "column"].includes(sSurface[0]);
+        // Wrap style applies to wrapped surfaces only — railings and columns
+        // have no wrap (the quote prices both per string and ignores
+        // wrapStyle; only bushes/trees vary canopy vs trunk).
+        const wrapSurface = sSurface.length === 1 && ["bush", "tree"].includes(sSurface[0]);
         const countSurface = sSurface.length === 1 && ["bush", "tree", "column", "railing"].includes(sSurface[0]);
         return `
       <section>
@@ -3051,7 +3052,7 @@ export async function renderEditor(
           <option value="column" ${sSurface.length === 1 && sSurface[0] === "column" ? "selected" : ""}>Column</option>
           <option value="railing" ${sSurface.length === 1 && sSurface[0] === "railing" ? "selected" : ""}>Railing</option>
         </select>
-        ${sSurface.length === 1 && sSurface[0] === "railing" ? "" : `
+        ${sSurface.length === 1 && (sSurface[0] === "railing" || sSurface[0] === "column") ? "" : `
         <label style="display:block;margin-top:8px;margin-bottom:2px;font-size:11px;color:var(--text-dim)">Wrap style</label>
         <select id="sel-ma-wrapstyle" class="yardstick-select">
           <option value="canopy" ${sWrap.length === 1 && sWrap[0] === "canopy" ? "selected" : ""}>Canopy</option>
@@ -3203,7 +3204,7 @@ export async function renderEditor(
           <option value="column" ${sSurface === "column" ? "selected" : ""}>Column</option>
           <option value="railing" ${sSurface === "railing" ? "selected" : ""}>Railing</option>
         </select>
-        ${sSurface === "railing" ? "" : `
+        ${sSurface === "railing" || sSurface === "column" ? "" : `
         <label style="display:block;margin-top:8px;margin-bottom:2px;font-size:11px;color:var(--text-dim)">Wrap style</label>
         <select id="sel-mg-wrapstyle" class="yardstick-select">
           <option value="canopy" ${sWrap === "canopy" ? "selected" : ""}>Canopy</option>
