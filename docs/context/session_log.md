@@ -17,7 +17,7 @@ Running log of work sessions on the design tool ([[project-design-tool]]). The C
   3. **Re-snapshot memory into the repo:** copy `~/.claude/projects/C--Users-Jason-Desktop-YuleLoveLights-Claude/memory/*.md` → `<repo>/docs/context/`, then tell Jason to commit + push (so Naldo / backups stay current).
   Then a fresh session can pick up cold.
 
-## Sessions so far: 3
+## Sessions so far: 4
 
 ---
 
@@ -60,6 +60,15 @@ Huge session. Picked up post-Session-2 (design tool feature-complete on items). 
   2. **#1 + #3 — relocate the tool to Lights as a 4th drawing style "Scattershot"** (next to Strand/Trace/Single), drag-to-draw a box → `commitMiniArea(rect)`. Remove the Decor "Mini Area" sub-type. Rename all UI "Mini Area" → **"Scattershot"** (keep internal `kind:"miniArea"`). Use a LOCAL editor flag — do NOT touch the shared `DrawingStyle` type.
   3. **#2 follow-up:** `railing` surface added on our side; the quote tool must add `railing` to their `Surface` + a price-book rate (relayed).
   Also: the quote tool needs to copy our latest `editor.ts`/`api.ts` (railing) verbatim; their portal "build-your-own" (D) work continues separately.
+
+### Session 4 — A2 follow-up fixes shipped (2026-06-10) · CURRENT
+All three A2 follow-ups DONE + verified live (see [[project-integration]] "A2 follow-up fixes" for full mechanics). Commits (Jason pushes; was ahead 2 at wrap):
+- `cdda753` **#4 fix** — missing `.miniArea` stage-dispatch guard (clicks fell through to place → invisible duplicates + mid-gesture redraw killing selection/drag) + a LATENT day-1 crash (`#add-color`/`#clear-pattern` wired with `!` but Lights-only ⇒ every Decor draw-panel render threw, corrupting Konva dispatch).
+- `aa9f928` **#1/#3 Scattershot** — 4th drawing style under Lights→**Mini ONLY** (local `tool.scattershot` flag; shared `DrawingStyle` untouched); drag-to-draw box; Decor sub-type removed; UI renamed (kind stays `"miniArea"`); **+ colorPattern support** (additive `MiniAreaItem.colorPattern?: string[]`; renderer cycles colors; edit panel tap-to-recolor + ARMED add-to-pattern).
+- **#2 railing**: quote tool added `railing` to Surface + copied miniArea.ts into their portal; their price-book rate = logged v0.5 follow-up.
+- Debug war stories: hidden Chrome tabs freeze RAF/input/screenshots (drive Konva with synthetic MouseEvents — pointer events alone don't trigger Konva mouse handlers); PS 5.1 mangles embedded double quotes to native exes (use `git commit -F file`); test client "ZZ Claude Test" created (Jason may delete).
+- Both optional follow-ups DONE same session (Jason approved): spritzer armed-add + marquee miniArea branch (3rd commit). Test client **"ZZ Claude Test" KEPT** as a scratch pad for future tests (Jason's call).
+- **NEXT:** (1) Jason pushes the commits (2 feature + follow-ups + docs snapshot); (2) ferry the combined relay to the quote tool (re-copy `pages/editor.ts` + `editor/miniArea.ts` verbatim; their `sceneTypes.MiniAreaItem += colorPattern?: string[]`; relay text was provided in-session); (3) then back to the broader roadmap (quote-tool Phase 2 portal work is on their side; our side has the old polish list: VPS deploy, design thumbnails, duplicate-whole-design).
 
 ---
 
