@@ -18,14 +18,14 @@ export type DrawingStyle = "strand" | "trace" | "single";
 export type Surface =
   | "santas-roofline" | "gingerbread" | "winter-wonderland" // c9 roofline / extra
   | "bush" | "tree" | "column" | "railing";                 // mini-light wraps (railing = grouped/strand mini wrap)
-export type Tier = "labor" | "bow" | "fullDecor";
+export type Tier = "bow" | "fullDecor";
 export type WrapStyle = "canopy" | "trunk";
 // The REAL billed product (staff-set; mirrors the quote tool's price book).
 // Item size in the design is VISUAL ONLY (staff draw whatever looks best on the
 // photo, e.g. a 60" drawn wreath may be a 30" Noble) — the billed spec is these
 // explicit quote* fields, NOT the drawn size.
 export type QuoteSpritzerSize = "16" | "24" | "32";
-export type QuoteWreathSize = "24noble" | "30noble" | "36noble" | "48noble" | "36oregon";
+export type QuoteWreathSize = "24noble" | "30noble" | "36noble" | "48noble" | "60noble" | "72noble";
 export type QuoteGarlandLength = "4.5ft" | "9ft";
 
 // ----- Items -----
