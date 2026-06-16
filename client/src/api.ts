@@ -1,3 +1,5 @@
+import type { RenderSettings } from "./editor/renderSettings";
+
 export type Yardstick = {
   id: string;
   realFeet: number;
@@ -431,6 +433,17 @@ export const api = {
     return req<{ ok: true }>("/api/settings/defaults", {
       method: "PUT",
       body: JSON.stringify({ defaults }),
+    });
+  },
+  // App-wide render settings (shape = editor core's RenderSettings). The
+  // editor shell loads these and applies them via setRenderSettings() at init.
+  async getRenderSettings() {
+    return req<RenderSettings>("/api/settings/render");
+  },
+  async updateRenderSettings(render: Partial<RenderSettings>) {
+    return req<{ ok: true }>("/api/settings/render", {
+      method: "PUT",
+      body: JSON.stringify({ render }),
     });
   },
   async listUploads() {

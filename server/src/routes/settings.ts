@@ -138,6 +138,41 @@ function writeDefaults(d: ToolDefaults): void {
   ).run(JSON.stringify(d));
 }
 
+// App-wide RENDER settings (how items are DRAWN — distinct from per-type seed
+// defaults). Shape mirrors the editor core's renderSettings.ts; the design tool
+// stores them here, the editor shell applies them at init.
+const DEFAULT_RENDER_SETTINGS = { spritzerRayDensity: 0.45 };
+type RenderSettings = typeof DEFAULT_RENDER_SETTINGS;
+
+function readRender(): RenderSettings {
+  const row = db
+    .prepare("SELECT value FROM app_settings WHERE key = 'render'")
+    .get() as { value: string } | undefined;
+  if (!row) return DEFAULT_RENDER_SETTINGS;
+  try {
+    const parsed = JSON.parse(row.value);
+    if (!parsed || typeof parsed !== "object") return DEFAULT_RENDER_SETTINGS;
+    // Merge so new fields appear automatically as we add them, without forcing
+    // a reset; each field validated, falling back to the default if malformed.
+    return mergeRender(DEFAULT_RENDER_SETTINGS, parsed as Record<string, unknown>);
+  } catch {
+    return DEFAULT_RENDER_SETTINGS;
+  }
+}
+
+function mergeRender(base: RenderSettings, override: Record<string, unknown>): RenderSettings {
+  const out: RenderSettings = { ...base };
+  const d = override.spritzerRayDensity;
+  if (typeof d === "number" && Number.isFinite(d) && d > 0) out.spritzerRayDensity = d;
+  return out;
+}
+
+function writeRender(r: RenderSettings): void {
+  db.prepare(
+    "INSERT INTO app_settings (key, value) VALUES ('render', ?)\n       ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  ).run(JSON.stringify(r));
+}
+
 export async function settingsRoutes(app: FastifyInstance) {
   app.get("/api/settings/colors", async () => {
     return readColors();
@@ -176,6 +211,25 @@ export async function settingsRoutes(app: FastifyInstance) {
         return { error: "defaults_required" };
       }
       writeDefaults(d);
+      return { ok: true };
+    },
+  );
+
+  app.get("/api/settings/render", async () => {
+    return readRender();
+  });
+
+  app.put<{ Body: { render?: Record<string, unknown> } }>(
+    "/api/settings/render",
+    async (req, reply) => {
+      const r = req.body?.render;
+      if (!r || typeof r !== "object") {
+        reply.code(400);
+        return { error: "render_required" };
+      }
+      // Validate-and-merge against the current stored value so a partial or
+      // malformed payload can't corrupt the render.
+      writeRender(mergeRender(readRender(), r));
       return { ok: true };
     },
   );

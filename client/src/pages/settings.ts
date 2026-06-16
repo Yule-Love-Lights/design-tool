@@ -1,5 +1,6 @@
 import { api, type BulbColor, type CustomUpload, type ToolDefaults } from "../api";
 import { COLORS, DEFAULT_COLORS, setPalette, suggestGlow } from "../editor/colors";
+import { DEFAULT_RENDER_SETTINGS, setRenderSettings, type RenderSettings } from "../editor/renderSettings";
 // Keep the Google Fonts link in index.html — that's what actually loads the
 // Bebas Neue / Oswald / Pacifico / Inter faces used by the settings font
 // preview buttons here.
@@ -7,14 +8,16 @@ import { COLORS, DEFAULT_COLORS, setPalette, suggestGlow } from "../editor/color
 let palette: BulbColor[] = [];
 let defaults: ToolDefaults = {};
 let uploads: CustomUpload[] = [];
+let render: RenderSettings = { ...DEFAULT_RENDER_SETTINGS };
 
 // Settings is split into tabs so the user isn't scrolling through one
 // long stack of every-item-type defaults. Tab persists in module state
 // across renders during a single visit; resets to "palette" on remount.
-type SettingsTab = "palette" | "lights" | "decor" | "text" | "custom" | "poles";
+type SettingsTab = "palette" | "render" | "lights" | "decor" | "text" | "custom" | "poles";
 let activeTab: SettingsTab = "palette";
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "palette", label: "Palette" },
+  { id: "render", label: "Render" },
   { id: "lights", label: "Lights" },
   { id: "decor", label: "Decor" },
   { id: "text", label: "Text" },
@@ -247,6 +250,7 @@ export async function renderSettings(root: HTMLElement) {
     api.getColors().then((c) => { palette = c; setPalette(palette); }).catch(() => { palette = [...DEFAULT_COLORS]; }),
     api.getDefaults().then((d) => { defaults = d; }).catch(() => { defaults = FACTORY_DEFAULTS; }),
     api.listUploads().then((u) => { uploads = u; }).catch(() => { uploads = []; }),
+    api.getRenderSettings().then((r) => { render = r; setRenderSettings(r); }).catch(() => { render = { ...DEFAULT_RENDER_SETTINGS }; }),
   ]);
 
   renderTabs(root);
@@ -348,6 +352,45 @@ function renderActiveTab(root: HTMLElement) {
       palette = DEFAULT_COLORS.map((c) => ({ ...c }));
       await savePalette(root);
       renderPalette(root);
+    });
+    return;
+  }
+
+  if (activeTab === "render") {
+    const v = render.spritzerRayDensity;
+    wrap.innerHTML = `
+      <section class="card">
+        <div class="card-head">
+          <h2>Render Settings</h2>
+          <div class="actions">
+            <button id="reset-render">Reset to defaults</button>
+          </div>
+        </div>
+        <p class="hint">
+          App-wide rendering tunables. Unlike the per-type defaults, these change how items
+          are drawn in <em>every</em> design — including ones already made — the moment you save.
+        </p>
+        <div class="defaults-field">
+          <label>Spritzer ray density <span style="float:right;color:var(--text-dim)" id="render-rd-val">${v.toFixed(2)}</span></label>
+          <input type="range" id="render-rd" min="0.1" max="1.5" step="0.05" value="${v}" />
+          <div class="hint" style="margin-top:4px">Rays per pixel of a spritzer's rendered radius — higher is a denser spray. The final ray count is still capped between 7 and 36.</div>
+        </div>
+        <div class="saving" id="render-status"></div>
+      </section>
+    `;
+    const slider = root.querySelector("#render-rd") as HTMLInputElement;
+    const label = root.querySelector("#render-rd-val") as HTMLElement;
+    slider.addEventListener("input", () => { label.textContent = Number(slider.value).toFixed(2); });
+    slider.addEventListener("change", async () => {
+      render = { ...render, spritzerRayDensity: Number(slider.value) };
+      setRenderSettings(render);
+      await saveRender(root);
+    });
+    (root.querySelector("#reset-render") as HTMLElement).addEventListener("click", async () => {
+      render = { ...DEFAULT_RENDER_SETTINGS };
+      setRenderSettings(render);
+      renderActiveTab(root);
+      await saveRender(root);
     });
     return;
   }
@@ -649,6 +692,20 @@ async function saveDefaults(root: HTMLElement) {
     window.setTimeout(() => { if (status.textContent === "Saved") status.textContent = ""; }, 1500);
   } catch (err) {
     status.textContent = `Save failed: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+async function saveRender(root: HTMLElement) {
+  const status = root.querySelector("#render-status") as HTMLElement | null;
+  if (status) status.textContent = "Saving…";
+  try {
+    await api.updateRenderSettings(render);
+    if (status) {
+      status.textContent = "Saved";
+      window.setTimeout(() => { if (status.textContent === "Saved") status.textContent = ""; }, 1500);
+    }
+  } catch (err) {
+    if (status) status.textContent = `Save failed: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
 

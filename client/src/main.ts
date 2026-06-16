@@ -4,8 +4,25 @@ import { renderClients } from "./pages/clients";
 import { renderProject } from "./pages/project";
 import { renderEditor } from "./pages/editor";
 import { renderSettings } from "./pages/settings";
+import { setRenderSettings } from "./editor/renderSettings";
 
 const root = document.getElementById("app")!;
+
+// App-wide RENDER settings (e.g. spritzer ray density) are applied from the
+// shell — NOT inside editor.ts — so the vendored editor core stays byte-
+// identical with the quote tool (which applies them from its own shell +
+// portal). Loaded once per app load, before any editor mount; the Settings
+// page updates the in-memory value directly on save.
+let renderSettingsApplied = false;
+async function ensureRenderSettings() {
+  if (renderSettingsApplied) return;
+  renderSettingsApplied = true;
+  try {
+    setRenderSettings(await api.getRenderSettings());
+  } catch {
+    // Keep the built-in defaults if the fetch fails.
+  }
+}
 
 // Track the current top-level route so internal navigations within the project
 // page (design-tab switches via history.replaceState) don't re-run routing.
@@ -23,6 +40,9 @@ async function route() {
     window.location.hash = "#/login";
     return;
   }
+  // Apply stored render settings before mounting any authed view that renders
+  // items (editor). Idempotent + guarded, so it only fetches once.
+  await ensureRenderSettings();
   // Project page: #/project/:projectId or #/project/:projectId/:designId
   if (hash.startsWith("/project/")) {
     const parts = hash.slice("/project/".length).split("/");
