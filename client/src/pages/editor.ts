@@ -825,6 +825,25 @@ export async function renderEditor(
     });
   }
 
+  // Transform/drag bakes funnel their persist + re-render tail through here.
+  // Deferred + coalesced to ONE microtask per gesture so a MULTI-item drag
+  // (Konva proxies the drag to every selected node and startDrag()s them, so
+  // each fires its own dragend → its own bake) lets ALL siblings fold their
+  // new position into the scene BEFORE we re-render. A synchronous redraw on
+  // the first dragend would destroy the not-yet-baked siblings → they snap back.
+  let bakeFinalizeScheduled = false;
+  function finishBake() {
+    scheduleSave();
+    if (bakeFinalizeScheduled) return;
+    bakeFinalizeScheduled = true;
+    queueMicrotask(() => {
+      bakeFinalizeScheduled = false;
+      if (destroyed) return;
+      commit();
+      redrawScene();
+    });
+  }
+
   // The pole's Transformer only exposes the top-center anchor, so dragging
   // it scales group.scaleY and keeps the base (bottom-center) anchored.
   // Bake scaleY into heightIn, reset scale, accept group's x/y as the new
@@ -844,9 +863,7 @@ export async function renderEditor(
     };
     group.scaleX(1);
     group.scaleY(1);
-    scheduleSave();
-    commit();
-    redrawScene();
+    finishBake();
   }
 
   // Same shape as wreath/bow/text bake — average X/Y scale into widthIn so
@@ -870,9 +887,7 @@ export async function renderEditor(
     };
     group.scaleX(1);
     group.scaleY(1);
-    scheduleSave();
-    commit();
-    redrawScene();
+    finishBake();
   }
 
   // Same wreath-style bake: average scale into sizeIn, reset, commit. Rotation
@@ -895,9 +910,7 @@ export async function renderEditor(
     };
     group.scaleX(1);
     group.scaleY(1);
-    scheduleSave();
-    commit();
-    redrawScene();
+    finishBake();
   }
 
   // Same shape as wreath/bow bake — average the X/Y scale into sizeIn and
@@ -920,9 +933,7 @@ export async function renderEditor(
     };
     group.scaleX(1);
     group.scaleY(1);
-    scheduleSave();
-    commit();
-    redrawScene();
+    finishBake();
   }
 
   // Bake a miniArea move/resize back into the item. Box: position → x/y, scale →
@@ -957,9 +968,7 @@ export async function renderEditor(
     }
     group.scaleX(1);
     group.scaleY(1);
-    scheduleSave();
-    commit();
-    redrawScene();
+    finishBake();
   }
 
   // After a Transformer move/rotate (no resize — anchors disabled for garland),
@@ -987,9 +996,7 @@ export async function renderEditor(
         i.id === garlandId && isGarland(i) ? { ...i, points: newPts } : i,
       ),
     };
-    scheduleSave();
-    commit();
-    redrawScene();
+    finishBake();
   }
 
   // Bake the Transformer's scale into the wreath's stored sizeIn so the next
@@ -1011,9 +1018,7 @@ export async function renderEditor(
     };
     group.scaleX(1);
     group.scaleY(1);
-    scheduleSave();
-    commit();
-    redrawScene();
+    finishBake();
   }
 
   // Same as bakeTransformIntoWreath but for bows. keepRatio is on for bows too,
@@ -1035,9 +1040,7 @@ export async function renderEditor(
     };
     group.scaleX(1);
     group.scaleY(1);
-    scheduleSave();
-    commit();
-    redrawScene();
+    finishBake();
   }
 
   // After the user drags a Transformer anchor on a yardstick, bake the scale into
@@ -1060,9 +1063,7 @@ export async function renderEditor(
     // Reset the group transform so the next redraw uses identity scale.
     group.scaleX(1);
     group.scaleY(1);
-    scheduleSave();
-    commit();
-    redrawScene();
+    finishBake();
   }
 
   // After a Transformer move/scale/rotate, fold the group's transform back into the strand's
@@ -1087,9 +1088,7 @@ export async function renderEditor(
       ...scene,
       items: scene.items.map((s) => (s.id === strandId ? { ...s, points: newPts } : s)),
     };
-    scheduleSave();
-    commit();
-    redrawScene();
+    finishBake();
   }
 
   function clearSelection() {
