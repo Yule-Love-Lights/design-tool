@@ -205,8 +205,8 @@ Quote tool authored, we upstreamed verbatim (cores byte-identical again). `rende
 ### Post-A2 upstreams — drag-coalesce + yardstick (commits `b1ee4a9`, `407ed58`)
 Both quote-tool-authored, mirrored into shared `pages/editor.ts` / `editor/yardstick.ts`.
 - **`b1ee4a9` multi-select drag snap-back fix:** new `finishBake()` (defined just before `bakeTransformIntoPole`) — `scheduleSave()` runs per-bake, but `commit()`+`redrawScene()` are coalesced to ONE `queueMicrotask` per gesture (guarded by `destroyed`). All 10 transform/drag bakes call it; `deleteSelected`/`pasteFromClipboard` stay synchronous. Fixes: a multi-item drag fired each node's own dragend→bake, and the first synchronous redraw destroyed not-yet-baked siblings → snap-back.
-- **`407ed58` yardstick #71 restyle:** gold palette (`#ffd11a` selected / `#e6b800` idle for stroke + Tag fill; fills `rgba(255,200,0,0.24)`/`0.12`) + label y `-28`→`-44`. **⚠️ VALUE-ONLY — the quote tool's `// (#71)` comment lines weren't relayed, so cores are NOT yet byte-identical; mirror those comments when relayed.**
-- Both tsc-clean; **NOT live-verified** (Chrome blocked by Jason's manual-DNS/Secure-DNS localhost resolution — see [[session-log]]).
+- **`407ed58` yardstick #71 restyle:** gold palette (`#ffd11a` selected / `#e6b800` idle for stroke + Tag fill; fills `rgba(255,200,0,0.24)`/`0.12`) + label y `-28`→`-44`. The two `// (#71)` comment blocks were relayed after and added in `b56493c` → **`editor/yardstick.ts` byte-identical again.**
+- Both **live-verified by Jason** (multi-drag persists all siblings; gold yardstick renders) once he could load the app.
 
 ### Render settings — Phase 1 (#32, commit `fa41459`)
 First app-wide RENDER setting (how items DRAW, vs per-type seed defaults). Quote tool authored the shared core; we mirrored verbatim + built our app side.
