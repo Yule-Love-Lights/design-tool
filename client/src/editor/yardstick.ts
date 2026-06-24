@@ -13,6 +13,11 @@ export function renderYardstick(ys: Yardstick, indexLabel: string, isSelected: b
   const rect = new Konva.Rect({
     width: ys.width,
     height: ys.height,
+    // Gold/yellow so the yardstick box stays distinct from the blue (#4f8cff)
+    // selection Transformer that overlays it when you grab it to move (#71).
+    // The Transformer only draws a border + handles, so a clearly-yellow FILL
+    // keeps the box AREA readable underneath. Selected = brighter stroke + more
+    // opaque fill for feedback. (Tunable.)
     stroke: isSelected ? "#ffd11a" : "#e6b800",
     strokeWidth: 2,
     strokeScaleEnabled: false,
@@ -21,6 +26,8 @@ export function renderYardstick(ys: Yardstick, indexLabel: string, isSelected: b
     name: "yardstick-rect",
   });
 
+  // Lifted clear of the box top so the "Yardstick · N ft" tag doesn't crowd the
+  // top edge while you're placing/aligning the box (#71). (Tunable: the -44 y.)
   const label = new Konva.Label({
     x: ys.width / 2,
     y: -44,
