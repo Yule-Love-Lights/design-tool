@@ -18,7 +18,7 @@ export type DrawingStyle = "strand" | "trace" | "single";
 // embedding app passes showQuoteBinding. Keep these unions in sync with the
 // quote tool's vendored sceneTypes (member-for-member).
 export type Surface =
-  | "santas-roofline" | "gingerbread" | "winter-wonderland" // c9 roofline / extra
+  | "santas-roofline" | "gingerbread" | "winter-wonderland" | "stake-lighting" // c9 roofline / extra
   | "bush" | "tree" | "column" | "railing";                 // mini-light wraps (railing = grouped/strand mini wrap)
 export type Tier = "bow" | "fullDecor";
 export type WrapStyle = "canopy" | "trunk";

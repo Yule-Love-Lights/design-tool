@@ -2269,7 +2269,7 @@ export async function renderEditor(
       ${opts.showQuoteBinding ? (() => {
         const surfaceOpts: [string, string][] =
           sharedBulbType.length === 1 && sharedBulbType[0] === "c9"
-            ? [["santas-roofline", "Santa's Roofline"], ["gingerbread", "Gingerbread"], ["winter-wonderland", "Winter Wonderland"]]
+            ? [["santas-roofline", "Santa's Roofline"], ["gingerbread", "Gingerbread"], ["winter-wonderland", "Winter Wonderland"], ["stake-lighting", "Stake Lighting"]]
             : sharedBulbType.length === 1 && sharedBulbType[0] === "mini"
             ? [["bush", "Bush"], ["tree", "Tree"], ["column", "Column"], ["railing", "Railing"]]
             : [];
