@@ -4,7 +4,8 @@ import type { BulbColor } from "../api";
 // and as the target of the Settings → "Reset to defaults" button.
 export const DEFAULT_COLORS: BulbColor[] = [
   { id: "warm-white", label: "Warm White", hex: "#ffdca8", glow: "#fff2d4", builtin: true },
-  { id: "cool-white", label: "Cool White", hex: "#e0eaff", glow: "#ffffff", builtin: true },
+  { id: "cool-white", label: "Pure White", hex: "#e0eaff", glow: "#ffffff", builtin: true },
+  { id: "cool-white-faceted", label: "Cool White", hex: "#cee1e7", glow: "#eef5f8", builtin: true },
   { id: "black",      label: "Black",      hex: "#000000", glow: "#666666", builtin: true },
   { id: "red",        label: "Red",        hex: "#ff2a2a", glow: "#ff6a6a", builtin: true },
   { id: "green",      label: "Green",      hex: "#1aff6f", glow: "#6affac", builtin: true },
