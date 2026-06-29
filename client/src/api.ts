@@ -20,6 +20,13 @@ export type DrawingStyle = "strand" | "trace" | "single";
 export type Surface =
   | "santas-roofline" | "gingerbread" | "winter-wonderland" | "stake-lighting" // c9 roofline / extra
   | "bush" | "tree" | "column" | "railing";                 // mini-light wraps (railing = grouped/strand mini wrap)
+// Physical roof feature for a c9 roofline run — drives clip-SKU selection in the
+// inventory materials engine (#82 Slice 2b). NET-NEW + optional, so the core
+// geometry stays byte-identical and data without it is simply "unset". Distinct
+// from `surface` (a BILLING category): this is the PHYSICAL attachment surface.
+// 'metal' = magnetic socket wire, no clip (flagged for staff). RELAY: mirror to
+// the standalone design tool's scene types (byte-identical, like 'stake-lighting').
+export type RoofFeature = "gutter" | "peak" | "side" | "ridge" | "pathway" | "flat" | "metal";
 export type Tier = "bow" | "fullDecor";
 export type WrapStyle = "canopy" | "trunk";
 // The REAL billed product (staff-set; mirrors the quote tool's price book).
@@ -69,6 +76,10 @@ export type StrandItem = ItemBase & {
   stringCount?: number;
   wrapStyle?: WrapStyle;
   groupId?: string;
+  // Physical roof feature for clip selection in the inventory materials engine
+  // (#82 Slice 2b). Optional; null/absent = unset. Set by staff (+ AI auto-detect
+  // in 2c) on c9 roofline runs only. RELAY: shared with the standalone design tool.
+  roofFeature?: RoofFeature | null;
 };
 
 // A wreath sits at (x, y) (its center) and renders as a green ring of greenery

@@ -1,5 +1,5 @@
 import Konva from "konva";
-import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, isText, isCustom, isPole, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type TextItem, type CustomItem, type CustomUpload, type PoleItem, type Yardstick, type BulbType, type DrawingStyle, type Surface, type Tier, type WrapStyle, type QuoteWreathSize, type QuoteSpritzerSize, type QuoteGarlandLength, isMiniArea, isMiniGroup, type MiniAreaItem, type MiniGroupItem } from "../api";
+import { api, isStrand, isWreath, isBow, isGarland, isSpritzer, isText, isCustom, isPole, type Design, type Scene, type SceneItem, type Strand, type StrandItem, type WreathItem, type BowItem, type GarlandItem, type SpritzerItem, type TextItem, type CustomItem, type CustomUpload, type PoleItem, type Yardstick, type BulbType, type DrawingStyle, type Surface, type RoofFeature, type Tier, type WrapStyle, type QuoteWreathSize, type QuoteSpritzerSize, type QuoteGarlandLength, isMiniArea, isMiniGroup, type MiniAreaItem, type MiniGroupItem } from "../api";
 import { COLORS, setPalette } from "../editor/colors";
 import { renderStrand, strandLengthPx } from "../editor/strand";
 import { createWreath } from "../editor/wreath";
@@ -2273,6 +2273,20 @@ export async function renderEditor(
             : sharedBulbType.length === 1 && sharedBulbType[0] === "mini"
             ? [["bush", "Bush"], ["tree", "Tree"], ["column", "Column"], ["railing", "Railing"]]
             : [];
+        // RELAY: roof-feature options are shared with the standalone design tool —
+        // mirror any change there too (#82 Slice 2b clip-feature tag). Shown only
+        // for c9 roofline runs; drives the inventory clip-SKU selection.
+        const isC9Roofline = sharedBulbType.length === 1 && sharedBulbType[0] === "c9";
+        const roofFeatureOpts: [string, string][] = [
+          ["gutter", "Gutterline"],
+          ["peak", "Peak (gable, no gutter)"],
+          ["side", "Side (shingles)"],
+          ["ridge", "Ridge (apex)"],
+          ["pathway", "Pathway / stake"],
+          ["flat", "Flat / commercial"],
+          ["metal", "Metal roof (flag)"],
+        ];
+        const sRoofFeature = uniq(sel.map((s) => s.roofFeature ?? ""));
         const sSurface = uniq(sel.map((s) => s.surface ?? ""));
         const sInc = uniq(sel.map((s) => s.included ?? true));
         const sWrap = uniq(sel.map((s) => s.wrapStyle ?? "canopy"));
@@ -2292,6 +2306,14 @@ export async function renderEditor(
           ${surfaceOpts.map(([v, l]) => `<option value="${v}" ${sSurface.length === 1 && sSurface[0] === v ? "selected" : ""}>${l}</option>`).join("")}
         </select>
         ` : `<div style="font-size:11px;color:var(--text-dim)">This light type isn't quoted yet — nothing to tag.</div>`}
+        ${isC9Roofline ? `
+        <label style="display:block;margin-top:8px;margin-bottom:2px;font-size:11px;color:var(--text-dim)">Roof feature</label>
+        <select id="sel-roof-feature" class="yardstick-select">
+          <option value="">${sRoofFeature.length > 1 ? "— mixed —" : "— none —"}</option>
+          ${roofFeatureOpts.map(([v, l]) => `<option value="${v}" ${sRoofFeature.length === 1 && sRoofFeature[0] === v ? "selected" : ""}>${l}</option>`).join("")}
+        </select>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-dim)">Clip type for the materials list. Metal = no clip (flag for staff). No window/C7 lighting.</div>
+        ` : ""}
         ${wrapSurface ? `
         <label style="display:block;margin-top:8px;margin-bottom:2px;font-size:11px;color:var(--text-dim)">Wrap style</label>
         <select id="sel-wrapstyle" class="yardstick-select">
@@ -2476,6 +2498,10 @@ export async function renderEditor(
           return;
         }
         updateSelected((s) => ({ ...s, surface: v ? (v as Surface) : null }));
+      });
+      const roofSel = sb.querySelector("#sel-roof-feature") as HTMLSelectElement | null;
+      roofSel?.addEventListener("change", () => {
+        updateSelected((s) => ({ ...s, roofFeature: roofSel.value ? (roofSel.value as RoofFeature) : null }));
       });
       const wrapSel = sb.querySelector("#sel-wrapstyle") as HTMLSelectElement | null;
       wrapSel?.addEventListener("change", () => {
