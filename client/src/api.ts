@@ -19,7 +19,7 @@ export type DrawingStyle = "strand" | "trace" | "single";
 // quote tool's vendored sceneTypes (member-for-member).
 export type Surface =
   | "santas-roofline" | "gingerbread" | "winter-wonderland" | "stake-lighting" // c9 roofline / extra
-  | "bush" | "tree" | "column" | "railing";                 // mini-light wraps (railing = grouped/strand mini wrap)
+  | "bush" | "tree" | "column" | "railing" | "curtain";     // mini-light wraps (railing/curtain = grouped/strand mini wrap)
 // Physical roof feature for a c9 roofline run — drives clip-SKU selection in the
 // inventory materials engine (#82 Slice 2b). NET-NEW + optional, so the core
 // geometry stays byte-identical and data without it is simply "unset". Distinct
