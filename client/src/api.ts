@@ -27,6 +27,13 @@ export type Surface =
 // 'metal' = magnetic socket wire, no clip (flagged for staff). RELAY: mirror to
 // the standalone design tool's scene types (byte-identical, like 'stake-lighting').
 export type RoofFeature = "gutter" | "peak" | "side" | "ridge" | "pathway" | "flat" | "metal";
+// Which side of the house a c9 / permanent strand runs on (#103). NET-NEW +
+// optional single-select, so the core geometry stays byte-identical and data
+// without it is simply "unset". A staff TAG only — no portal/pricing/packages
+// yet (later: permanent-lighting packages like "Front of house" / "all sides").
+// RELAY: mirror to the standalone design tool's scene types (byte-identical,
+// like RoofFeature / 'stake-lighting').
+export type SideOfHouse = "front" | "back" | "left" | "right";
 export type Tier = "bow" | "fullDecor";
 export type WrapStyle = "canopy" | "trunk";
 // The REAL billed product (staff-set; mirrors the quote tool's price book).
@@ -80,6 +87,10 @@ export type StrandItem = ItemBase & {
   // (#82 Slice 2b). Optional; null/absent = unset. Set by staff (+ AI auto-detect
   // in 2c) on c9 roofline runs only. RELAY: shared with the standalone design tool.
   roofFeature?: RoofFeature | null;
+  // Which side of the house this run is on (#103). Optional single-select;
+  // null/absent = unset. Set by staff on c9 + permanent strands. A tag only — no
+  // pricing yet. RELAY: shared with the standalone design tool.
+  sideOfHouse?: SideOfHouse | null;
 };
 
 // A wreath sits at (x, y) (its center) and renders as a green ring of greenery
