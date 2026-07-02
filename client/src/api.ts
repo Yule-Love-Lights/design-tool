@@ -57,6 +57,11 @@ export type ItemBase = {
   // false hides it from the live render + drops it from the quote; unset = included.
   surface?: Surface | null;
   included?: boolean;
+  // Which photo of a multi-photo design the item is drawn on (quote tool #13).
+  // Absent/null = the design's base photo. This app models one photo per design
+  // (tabs), so it never sets or reads this — carried so a quote-tool scene with
+  // extra-photo items round-trips without loss. RELAY: shared scene vocabulary.
+  photoId?: string | null;
 };
 
 export type StrandItem = ItemBase & {
