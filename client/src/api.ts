@@ -62,6 +62,11 @@ export type ItemBase = {
   // (tabs), so it never sets or reads this — carried so a quote-tool scene with
   // extra-photo items round-trips without loss. RELAY: shared scene vocabulary.
   photoId?: string | null;
+  // Linked twin (quote tool #13): this item is a render-only depiction of
+  // another item (the canonical) re-drawn on a different photo — it never
+  // bills. This app never sets or reads it — carried for round-trip safety.
+  // RELAY: shared scene vocabulary, same class as photoId.
+  linkedToId?: string | null;
 };
 
 export type StrandItem = ItemBase & {
