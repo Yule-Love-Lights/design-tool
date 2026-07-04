@@ -1191,6 +1191,18 @@ export async function renderEditor(
         sx += it.x;
         sy += it.y;
         n++;
+      } else if (isMiniArea(it)) {
+        if (it.shape === "polygon" && it.points) {
+          for (let i = 0; i < it.points.length; i += 2) {
+            sx += it.points[i];
+            sy += it.points[i + 1];
+            n++;
+          }
+        } else {
+          sx += it.x ?? 0;
+          sy += it.y ?? 0;
+          n++;
+        }
       }
     }
     return n === 0 ? { x: 0, y: 0 } : { x: sx / n, y: sy / n };
@@ -1214,6 +1226,15 @@ export async function renderEditor(
     if (isWreath(it) || isBow(it) || isSpritzer(it) || isText(it) || isCustom(it) || isPole(it)) {
       return { ...it, x: it.x + dx, y: it.y + dy };
     }
+    if (isMiniArea(it)) {
+      if (it.shape === "polygon" && it.points) {
+        return {
+          ...it,
+          points: it.points.map((v, i) => v + (i % 2 === 0 ? dx : dy)),
+        };
+      }
+      return { ...it, x: (it.x ?? 0) + dx, y: (it.y ?? 0) + dy };
+    }
     return it;
   }
 
@@ -1236,6 +1257,7 @@ export async function renderEditor(
     const newItems: SceneItem[] = clipboard.map((it) => {
       const cloned = JSON.parse(JSON.stringify(it)) as SceneItem;
       cloned.id = cryptoId();
+      if ("groupId" in cloned) cloned.groupId = undefined;
       return shiftItem(cloned, dx, dy);
     });
     scene = { ...scene, items: [...scene.items, ...newItems] };
@@ -2439,6 +2461,7 @@ export async function renderEditor(
       const newStrands = sel.map((s) => ({
         ...s,
         id: cryptoId(),
+        groupId: undefined,
         points: s.points.map((p) => p + 20),
       }));
       scene = { ...scene, items: [...scene.items, ...newStrands] };
