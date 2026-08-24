@@ -10,6 +10,7 @@ import { renderText, fontsReady, FONT_OPTIONS, DEFAULT_TEXT_SIZE_IN, type FontFa
 import { createCustom } from "../editor/custom";
 import { createPole } from "../editor/pole";
 import { renderMiniArea } from "../editor/miniArea";
+import { seedGroupStringCount } from "../editor/miniGroupBilling";
 import { preloadAssets } from "../editor/assets";
 import { renderYardstick, pxPerFoot, yardstickLabel } from "../editor/yardstick";
 import { DEFAULT_KEYMAP, resolveAction, type KeyMap } from "../editor/keymap";
@@ -2618,7 +2619,7 @@ export async function renderEditor(
         // never bill on their own, so falling through to a plain surface tag
         // below is harmless — it just doesn't create a group to resurrect.
         if ((v === "railing" || v === "curtain") && sel.length >= 2 && sel.every((s) => s.bulbType === "mini" && !s.groupId && !s.linkedToId)) {
-          groupSelectedMini(v, sel.length);
+          groupSelectedMini(v, seedGroupStringCount(sel, sel.length));
           return;
         }
         updateSelected((s) => ({ ...s, surface: v ? (v as Surface) : null }));
@@ -2646,7 +2647,7 @@ export async function renderEditor(
       });
     }
     sb.querySelector("#sel-group-mini")?.addEventListener("click", () => {
-      groupSelectedMini(sel[0].surface ?? "bush", sel[0].stringCount ?? 1);
+      groupSelectedMini(sel[0].surface ?? "bush", seedGroupStringCount(sel, sel[0].stringCount ?? 1));
     });
     sb.querySelector("#sel-delete")!.addEventListener("click", deleteSelected);
   }
