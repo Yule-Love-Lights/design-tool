@@ -353,6 +353,14 @@ export async function renderEditor(
     selectedIds.clear();
     scheduleSave();
     redrawScene();
+    // Row 348 (relay from quote-tool #937): redrawScene() only rebuilds the
+    // drawn items - it never touches the brightness control or the tint layer,
+    // so both keep showing the pre-undo value and the canvas keeps the stale
+    // tint. Resync them explicitly. (The quote-tool also resyncs a light-size
+    // slider here; that control does not exist in this repo, so only the
+    // brightness half relays.)
+    brightnessEl.value = String(scene.brightness ?? 50);
+    drawTint();
     updateUndoRedoButtons();
   }
 
@@ -364,6 +372,14 @@ export async function renderEditor(
     selectedIds.clear();
     scheduleSave();
     redrawScene();
+    // Row 348 (relay from quote-tool #937): redrawScene() only rebuilds the
+    // drawn items - it never touches the brightness control or the tint layer,
+    // so both keep showing the pre-undo value and the canvas keeps the stale
+    // tint. Resync them explicitly. (The quote-tool also resyncs a light-size
+    // slider here; that control does not exist in this repo, so only the
+    // brightness half relays.)
+    brightnessEl.value = String(scene.brightness ?? 50);
+    drawTint();
     updateUndoRedoButtons();
   }
 
